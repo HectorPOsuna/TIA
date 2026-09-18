@@ -1,0 +1,22 @@
+# Arduino IDE
+*.elf
+*.hex
+*.bin
+*.o
+*.d
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+build/
+dist/
+*.log
