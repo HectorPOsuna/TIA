@@ -1,10 +1,14 @@
 #include "SensorManager.h"
+#include "config.h"
 #include <Arduino.h>
 
 SensorManager::SensorManager(SensorRegistry& registry, ArduinoPlatform& platform)
     : registry_(registry), platform_(platform), bus_(nullptr), sensorCount_(0) {}
 
 SensorManager::~SensorManager() {
+    for (auto* driver : drivers_) {
+        delete driver;
+    }
     delete bus_;
 }
 
@@ -17,7 +21,7 @@ bool SensorManager::begin() {
 }
 
 void SensorManager::update() {
-    for (auto& driver : drivers_) {
+    for (auto* driver : drivers_) {
         float temp = 0.0f;
         bool ok = driver->read(temp);
         
@@ -38,6 +42,9 @@ std::vector<SensorReading> SensorManager::getReadings() const {
 }
 
 void SensorManager::discoverSensors() {
+    for (auto* driver : drivers_) {
+        delete driver;
+    }
     drivers_.clear();
     sensorCount_ = 0;
     
@@ -52,11 +59,13 @@ void SensorManager::discoverSensors() {
             continue;
         }
         
-        auto driver = std::make_unique<DS18B20Driver>(bus_, addr, sensorCount_);
+        auto* driver = new DS18B20Driver(bus_, addr, sensorCount_);
         if (driver->begin()) {
             registry_.registerSensor(driver->getId());
-            drivers_.push_back(std::move(driver));
+            drivers_.push_back(driver);
             sensorCount_++;
+        } else {
+            delete driver;
         }
     }
     

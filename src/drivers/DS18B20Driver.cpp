@@ -1,9 +1,8 @@
 #include "DS18B20Driver.h"
+#include "config.h"
 #include <DallasTemperature.h>
 #include <cstring>
 #include <cstdio>
-
-#define DEVICE_DISCONNECTED_C -127.0f
 
 DS18B20Driver::DS18B20Driver(OneWireBus* bus, const uint8_t* address, uint8_t index)
     : bus_(bus), index_(index), connected_(false), failureCount_(0), 
@@ -11,7 +10,10 @@ DS18B20Driver::DS18B20Driver(OneWireBus* bus, const uint8_t* address, uint8_t in
     
     std::memcpy(address_, address, 8);
     dallasTemp_ = new DallasTemperature(static_cast<OneWire*>(bus_->getOneWire()));
-    id_ = "DS18B20_" + std::to_string(index_) + "_" + addressToString(address_ + 4);
+    
+    char idxStr[4];
+    snprintf(idxStr, sizeof(idxStr), "%d", index_);
+    id_ = "DS18B20_" + std::string(idxStr) + "_" + addressToString(address_ + 4);
 }
 
 DS18B20Driver::~DS18B20Driver() {
@@ -71,7 +73,7 @@ uint8_t DS18B20Driver::getConsecutiveFailures() const {
 
 std::string DS18B20Driver::addressToString(const uint8_t* addr) const {
     char buf[9];
-    std::snprintf(buf, sizeof(buf), "%02X%02X%02X%02X", addr[0], addr[1], addr[2], addr[3]);
+    snprintf(buf, sizeof(buf), "%02X%02X%02X%02X", addr[0], addr[1], addr[2], addr[3]);
     return std::string(buf);
 }
 

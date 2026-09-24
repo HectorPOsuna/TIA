@@ -2,7 +2,6 @@
 #define SENSOR_MANAGER_H
 
 #include <vector>
-#include <memory>
 #include "core/ISensorDriver.h"
 #include "core/SensorRegistry.h"
 #include "core/SensorReading.h"
@@ -26,7 +25,7 @@ private:
     SensorRegistry& registry_;
     ArduinoPlatform& platform_;
     OneWireBus* bus_;
-    std::vector<std::unique_ptr<ISensorDriver>> drivers_;
+    std::vector<ISensorDriver*> drivers_;
     uint8_t sensorCount_;
 };
 

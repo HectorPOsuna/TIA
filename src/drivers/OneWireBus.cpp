@@ -10,7 +10,7 @@ OneWireBus::~OneWireBus() {
 }
 
 void OneWireBus::begin() {
-    static_cast<OneWire*>(oneWire_)->begin();
+    static_cast<OneWire*>(oneWire_)->begin(pin_);
 }
 
 void OneWireBus::resetSearch() {
