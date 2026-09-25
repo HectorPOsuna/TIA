@@ -1,7 +1,7 @@
 export type NodeType = 'general' | 'worker';
 export type NodeStatus = 'active' | 'inactive' | 'error';
 
-export const NODE_STATUS_VALUES: readonly NodeStatus[] = ['active', 'inactive', 'error'];
+export const NODE_STATUS_VALUES = ['active', 'inactive', 'error'] as const;
 
 export const STATUS_CODE: Record<NodeStatus, number> = {
   active: 0,
@@ -16,13 +16,13 @@ export type TaskType =
   | 'calibration'
   | 'custom';
 
-export const TASK_TYPE_VALUES: readonly TaskType[] = [
+export const TASK_TYPE_VALUES = [
   'cooldown',
   'maintenance',
   'reboot',
   'calibration',
   'custom',
-];
+] as const;
 
 export type TaskStatus = 'pending' | 'processing' | 'completed';
 
@@ -125,34 +125,22 @@ export type RuleMetric =
   | 'queueLength'
   | 'stackLength';
 
-export const RULE_METRIC_VALUES: readonly RuleMetric[] = [
+export const RULE_METRIC_VALUES = [
   'temperature',
   'temperatureDelta',
   'workload',
   'status',
   'queueLength',
   'stackLength',
-];
+] as const;
 
 export type RuleOperator = '>' | '>=' | '<' | '<=' | '==' | '!=';
 
-export const RULE_OPERATOR_VALUES: readonly RuleOperator[] = [
-  '>',
-  '>=',
-  '<',
-  '<=',
-  '==',
-  '!=',
-];
+export const RULE_OPERATOR_VALUES = ['>', '>=', '<', '<=', '==', '!='] as const;
 
 export type RuleSubject = 'any' | 'all' | 'system' | 'node';
 
-export const RULE_SUBJECT_VALUES: readonly RuleSubject[] = [
-  'any',
-  'all',
-  'system',
-  'node',
-];
+export const RULE_SUBJECT_VALUES = ['any', 'all', 'system', 'node'] as const;
 
 export type ActionType =
   | 'fan_on'
@@ -164,16 +152,16 @@ export type ActionType =
   | 'reduce_load'
   | 'set_target_temperature';
 
-export const ACTION_TYPE_VALUES: readonly ActionType[] = [
+export const ACTION_TYPE_VALUES = [
   'fan_on',
   'fan_off',
   'shutdown',
   'startup',
-  'enqueue_task',
+'enqueue_task',
   'send_alert',
   'reduce_load',
   'set_target_temperature',
-];
+] as const;
 
 export interface Rule {
   id: string;
