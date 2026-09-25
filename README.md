@@ -7,7 +7,7 @@ Simulador de monitorización térmica que replica el comportamiento del antiguo 
 | Componente | Tecnología | Carpeta |
 |---|---|---|
 | Backend (simulador) | Node.js/TypeScript, Express + Socket.IO | `backend/` |
-| Frontend (panel) | React (Vite) | `frontend/` (WIP, sin trackear) |
+| Frontend (panel) | React (Vite) | `frontend/` |
 
 No hay hardware ni código Arduino: el GitHub Actions / histórico lo conserva, pero el árbol actual es 100 % simulado.
 
