@@ -1,6 +1,6 @@
 # Changelog
 
-Todas las notas significativas de los cambios de TIA se documentan en este archivo.
+Todas las notas significativas de los cambios de WAItt se documentan en este archivo.
 
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
 

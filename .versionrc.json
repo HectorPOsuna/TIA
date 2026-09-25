@@ -1,6 +1,6 @@
 {
   "infile": "../CHANGELOG.md",
-  "changelogHeader": "# Changelog\n\nTodas las notas significativas de los cambios de TIA se documentan en este archivo.\n\nEl formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).",
+  "changelogHeader": "# Changelog\n\nTodas las notas significativas de los cambios de WAItt se documentan en este archivo.\n\nEl formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).",
   "commitUrlFormat": "https://github.com/HectorPOsuna/TIA/commit/{{hash}}",
   "compareUrlFormat": "https://github.com/HectorPOsuna/TIA/compare/{{previousTag}}...{{currentTag}}",
   "issueUrlFormat": "https://github.com/HectorPOsuna/TIA/issues/{{id}}",

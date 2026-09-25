@@ -1,8 +1,10 @@
-# Guía de Usuario — TIA Simulador de Temperatura
+# Guía de Usuario — WAItt Simulador de Temperatura
 
-## Qué es TIA
+WAItt es el acrónimo del **Sistema de cuidado del agua mediante técnicas de inteligencia artificial y estrangulamiento térmico**.
 
-TIA es un **simulador de monitoreo térmico**. En lugar de depender de sensores físicos, genera una simulación de servidores (nodos) que se calientan, se enfrían, encargan tareas y pueden entrar en estado de alerta. Sirve para explorar cómo se comportaría un sistema de monitoreo de temperatura real, sin necesidad de hardware.
+## Qué es WAItt
+
+WAItt es un **simulador de monitoreo térmico**. En lugar de depender de sensores físicos, genera una simulación de servidores (nodos) que se calientan, se enfrían, encargan tareas y pueden entrar en estado de alerta. Sirve para explorar cómo se comportaría un sistema de monitoreo de temperatura real, sin necesidad de hardware.
 
 La aplicación se compone de dos piezas que trabajan juntas:
 
@@ -33,7 +35,7 @@ pnpm.cmd dev
 Al arrancar verás un mensaje similar a:
 
 ```
-Backend TIA escuchando en http://localhost:3000
+Backend WAItt escuchando en http://localhost:3000
 ```
 
 Puedes comprobar que está vivo abriendo `http://localhost:3000/health` en el navegador. Debe responder algo como `{"status":"ok","running":true,...}`.
@@ -54,13 +56,13 @@ Cuando termine, abre la dirección que indica el mensaje (habitualmente):
 http://localhost:5173
 ```
 
-Deberías ver el panel **TIA · Simulador de temperatura** con una etiqueta verde "conectado" y el estado "en ejecución".
+Deberías ver el panel **WAItt · Simulador de temperatura** con una etiqueta verde "conectado" y el estado "en ejecución".
 
 ## La interfaz
 
 ### Cabecera
 
-- **TIA · Simulador de temperatura**: título del panel.
+- **WAItt · Simulador de temperatura**: título del panel.
 - Etiqueta de **conexión**: verde "conectado" si el frontend habla con el backend, roja "sin conexión" si el WebSocket cayó.
 - Etiqueta de **estado**: "en ejecución" o "pausado".
 - Botones **Pausar/Reanudar** y **Reset**:

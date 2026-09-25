@@ -1,6 +1,6 @@
-# TIA Backend — Simulador de temperatura
+# WAItt Backend — Simulador de temperatura
 
-Simulador en Node.js/TypeScript del sistema TIA: replica la lógica del firmware Arduino
+Simulador en Node.js/TypeScript del sistema WAItt: replica la lógica del firmware Arduino
 (modelo térmico, sesores con estados, colas FIFO de tareas, pila LIFO de eventos y reglas
 reactivas) y la expone vía REST + Socket.IO para que la interfaz React pueda operar sin
 hardware.

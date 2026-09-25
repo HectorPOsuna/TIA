@@ -1,4 +1,6 @@
-# TIA - Simulador de Temperatura
+# WAItt - Simulador de Temperatura
+
+WAItt es el acrónimo del **Sistema de cuidado del agua mediante técnicas de inteligencia artificial y estrangulamiento térmico**.
 
 Simulador de monitorización térmica que replica el comportamiento del antiguo sistema de firmware Arduino con sensores DS18B20: modelo térmico, nodos (general + trabajadores) con estados y fallos, cola FIFO de tareas, pila LIFO de eventos y reglas reactivas que se pueden editar en caliente.
 

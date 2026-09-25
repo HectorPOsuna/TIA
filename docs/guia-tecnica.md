@@ -1,4 +1,6 @@
-# Guía Técnica — TIA Simulador de Temperatura
+# Guía Técnica — WAItt Simulador de Temperatura
+
+WAItt es el acrónimo del **Sistema de cuidado del agua mediante técnicas de inteligencia artificial y estrangulamiento térmico**.
 
 Guía para desarrolladores que van a **mantener o extender** el proyecto. Presupone lectura previa de la [Guía de Usuario](guia-usuario.md) y de `AGENTS.md`.
 
