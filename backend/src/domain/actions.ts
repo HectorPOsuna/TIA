@@ -1,5 +1,5 @@
 import { DEFAULT_TASK_DURATION_MS } from './tasks.js';
-import type { TaskType } from './types.js';
+import type { Task, TaskType } from './types.js';
 import type { SimNode } from './node.js';
 
 export interface ActionLogger {
@@ -10,6 +10,10 @@ export interface ActionLogger {
     nodeId?: string,
     meta?: Record<string, unknown>,
   ): void;
+}
+
+export interface ActionEmitter {
+  onTaskQueued?: (nodeId: string, task: Task) => void;
 }
 
 const numParam = (params: Record<string, unknown> | undefined, key: string, fallback: number): number => {
@@ -29,6 +33,7 @@ export function runAction(
   params: Record<string, unknown> | undefined,
   node: SimNode,
   logger: ActionLogger,
+  emitter: ActionEmitter = {},
 ): void {
   const now = Date.now();
 
@@ -69,6 +74,9 @@ export function runAction(
       const durationMs = numParam(params, 'durationMs', DEFAULT_TASK_DURATION_MS);
       const description = strParam(params, 'description', `Tarea automática (${type})`);
       const result = node.enqueueTask({ type, estimatedDurationMs: durationMs, description });
+      if (result.task !== null && emitter.onTaskQueued !== undefined) {
+        emitter.onTaskQueued(node.id, result.task);
+      }
       logger.log(
         result.task !== null ? 'info' : 'warning',
         'task',
