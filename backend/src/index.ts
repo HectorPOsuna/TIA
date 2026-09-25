@@ -48,7 +48,7 @@ httpServer.listen(config.PORT, () => {
   logs.add(
     'info',
     'system',
-    `Backend TIA escuchando en http://localhost:${config.PORT} (CORS: ${config.CORS_ORIGIN})`,
+    `Backend WAItt escuchando en http://localhost:${config.PORT} (CORS: ${config.CORS_ORIGIN})`,
   );
   logs.add(
     'info',

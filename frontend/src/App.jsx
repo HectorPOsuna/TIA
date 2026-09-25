@@ -81,7 +81,7 @@ export default function App() {
   return (
     <main style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
       <header style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <h1 style={{ margin: 0 }}>TIA · Simulador de temperatura</h1>
+        <h1 style={{ margin: 0 }}>WAItt · Simulador de temperatura</h1>
         <span style={badge(connected ? '#2e7d32' : '#c62828')}>
           {connected ? 'conectado' : 'sin conexión'}
         </span>

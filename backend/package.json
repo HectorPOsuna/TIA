@@ -1,9 +1,9 @@
 {
-  "name": "tia-backend",
+  "name": "waitt-backend",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Simulador del sistema TIA: backend Node.js/TypeScript con API REST y WebSockets que reemplaza la lógica Arduino para desarrollo del frontend sin hardware.",
+  "description": "Simulador del sistema WAItt: backend Node.js/TypeScript con API REST y WebSockets que reemplaza la lógica Arduino para desarrollo del frontend sin hardware.",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
