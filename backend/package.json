@@ -1,6 +1,6 @@
 {
   "name": "tia-backend",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Simulador del sistema TIA: backend Node.js/TypeScript con API REST y WebSockets que reemplaza la lógica Arduino para desarrollo del frontend sin hardware.",
@@ -9,7 +9,14 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "release": "commit-and-tag-version --config ../.versionrc.json",
+    "release:dry": "commit-and-tag-version --config ../.versionrc.json --dry-run"
+  },
+  "commit-and-tag-version": {
+    "scripts": {
+      "prerelease": "pnpm.cmd run typecheck && pnpm.cmd run test && pnpm.cmd run build"
+    }
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -22,6 +29,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.2",
+    "commit-and-tag-version": "^13.2.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
