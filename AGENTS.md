@@ -7,6 +7,7 @@ TIA es un simulador de monitoreo térmico: un backend en Node.js/TypeScript (Exp
 - Backend (`backend/`): `pnpm.cmd install` · `pnpm.cmd dev` (tsx watch, `http://localhost:3000`) · verificación con `pnpm.cmd run typecheck` + `pnpm.cmd run test` (vitest, 19 tests) + `pnpm.cmd run build` (emite a `dist/`). No hay lint.
 - `typecheck` falla si hay locals/parámetros sin usar (`noUnusedLocals`/`noUnusedParameters` en tsconfig).
 - Frontend (`frontend/`, JSX sin TypeScript): `npm.cmd run dev` · `npm.cmd run build` · `npm.cmd run lint`.
+- Releases: `pnpm.cmd run release` en `backend/` valida (typecheck+test+build), computa la versión desde los commits convencionales, regenera el `CHANGELOG.md` de la raíz, commitea y crea el tag `vX.Y.Z`. `pnpm.cmd run release:dry` solo muestra lo que haría.
 
 ## Arquitectura backend (`backend/src/`)
 - `domain/` — lógica pura sin I/O (modelo térmico, cola FIFO, pila LIFO, nodos, sistema, reglas, acciones); `engine/` — `EventBus` tipado + `SimulationEngine`; `api/` — routers Express con validación zod; `infra/` — config, persistencia, loader de reglas, logs, Socket.IO, httpServer.
@@ -30,3 +31,8 @@ Env en `backend/.env` (ver `backend/.env.example`): `PORT`, `TICK_MS`, `INITIAL_
 
 ## Commits
 Todos en español, imperativo: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. Nunca commitees artefactos de build (`node_modules/`, `dist/`, `.pio/` — ignorados).
+
+## Changelog
+- `CHANGELOG.md` (raíz) se genera con `commit-and-tag-version` (config en `.versionrc.json` de la raíz, secciones en español). No se edita a mano.
+- Al no haber tags previos, la herramienta barre toda la historia: el release inicial `v1.0.0` se generó con `--first-release` y se limpió de la etapa clase/Arduino (commit `1488f4f`).
+- Los commits convencionales de la etapa clase/firmware (anteriores a `d9a605b`) quedan fuera del changelog.
