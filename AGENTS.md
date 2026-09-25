@@ -1,56 +1,37 @@
-# AGENTS.md - TIA Arduino Temperature Monitoring
+# AGENTS.md - TIA Simulador de Temperatura
 
-## Project Type
-PlatformIO project for DS18B20 temperature sensors (1-Wire bus) on Arduino Uno/Nano.
+TIA es un simulador de monitoreo térmico: un backend en Node.js/TypeScript (Express + Socket.IO) que replica la lógica del antiguo firmware Arduino (modelo térmico, nodos con estados, colas FIFO, pila LIFO de eventos y reglas reactivas hot-editable) y una interfaz React (Vite) que lo consume. No hay hardware ni código Arduino en el repo (eliminados en `0ad1655`).
 
 ## Build & Run
-- `pio run -e uno` — compile
-- `pio run -e uno -t upload` — upload to board
-- `pio device monitor -b 115200` — open Serial Monitor
-- `pio test -e native_test` — run unit tests (requires gcc/MinGW)
+- `pnpm`/`npm` PowerShell shims están bloqueados por la policy de ejecución: usa siempre `pnpm.cmd`/`npm.cmd`.
+- Backend (`backend/`):
+  - `pnpm.cmd install` — dependencias
+  - `pnpm.cmd dev` — servidor con recarga (`tsx watch`), `http://localhost:3000`
+  - `pnpm.cmd exec tsc --noEmit -p tsconfig.json` — chequeo de tipos
+  - `pnpm.cmd run test` — tests vitest (19 tests: térmico, colas/pila, reglas)
+  - `pnpm.cmd run build` / `pnpm.cmd start` — build de producción (`dist/`)
+- Frontend (`frontend/`, sin trackear): `npm.cmd run dev`; `npm.cmd run build`; `npm.cmd run lint`.
 
-## Key Files
-| File | Purpose |
-|------|---------|
-| `src/main.ino` | Entry point: setup, loop, periodic reads |
-| `src/config.h` | All tunable params (pin, precision, interval, JSON toggle) |
-| `src/core/` | Pure C++ interfaces (no Arduino deps) — SensorReading, SensorRegistry, TelemetryPublisher, ISensorDriver |
-| `src/platform/` | Arduino abstraction — ArduinoPlatform, PlatformTypes |
-| `src/drivers/` | Hardware abstraction — OneWireBus, DS18B20Driver |
-| `src/services/` | Application services — SensorManager, DataLogger, ArduinoSensorRegistry, SerialTelemetryPublisher |
-| `test/` | Unit tests with Unity + mocks |
+## Arquitectura backend (`backend/src/`)
+- `domain/` — lógica pura sin I/O: modelo térmico, cola FIFO, pila LIFO, nodos, sistema, store + evaluación de reglas y acciones.
+- `engine/` — `EventBus` tipado y `SimulationEngine` (tick: térmico → colas → reglas).
+- `api/` — routers Express con validación zod y contexto compartido.
+- `infra/` — config de entorno, persistencia, loader de reglas, logs, Socket.IO.
+- El transporte (API/WS) se suscribe al mismo `EventBus<SimEventMap>`; el dominio no depende de Express.
 
-## Config (edit `src/config.h`)
-```cpp
-#define ONE_WIRE_BUS 2              // Pin D2
-#define TEMPERATURE_PRECISION 12    // 9-12 bits
-#define READ_INTERVAL_MS 2000       // Read interval
-#define MAX_RETRIES 3               // Retries per read
-#define MAX_CONSECUTIVE_FAILURES 5  // Mark disconnected after N fails
-#define OUTPUT_FORMAT_JSON false    // true = JSON, false = text
-#define SERIAL_BAUD 115200
-```
+## Convenciones de código backend
+- ESM (`"type": "module"`), `moduleResolution` NodeNext, strict; los imports relativos llevan sufijo `.js`.
+- Validación con zod (`src/api/validation.ts`): usa `parseBody<S extends z.ZodTypeAny>` que devuelve `z.output<S>` (los campos con `.default()` en schemas `.refine()` no pierden el tipo requerido si NO se usa `z.ZodType<T>`).
+- Sin comentarios en el código.
 
-## Hardware
-- 2-4× DS18B20 (waterproof or TO-92)
-- 1× 4.7kΩ pull-up between DQ and VCC (required)
-- Wiring: VCC→5V, GND→GND, DQ→D2 + pull-up to 5V
+## Repo quirks
+- `frontend/` es WIP sin trackear (tiene `pnpm-lock.yaml` y `package-lock.json`; no añadir un tercer lockfile). Backend usa pnpm.
+- `pnpm` 12 exige aprobar builds en `backend/pnpm-workspace.yaml` (`allowBuilds: { esbuild: true }`); `pnpm.onlyBuiltDependencies` en `package.json` se ignora.
+- `data/default-rules.json` se carga al arranque y las reglas se pueden editar en caliente vía API.
+- No hay hardware: el "estado en error" de un nodo es un contador de fallos consecutivos simulado.
 
-## Output Formats
-**Text:** `[timestamp] DS18B20_0_AB12=23.44C  DS18B20_1_CD34=DESCONECTADO`  
-**JSON:** `{"ts":1234,"sensors":[{"id":"DS18B20_0_AB12","temp":23.44,"ok":true,...}]}`
+## Config
+Variable de entorno en `backend/.env` (ver `backend/.env.example`): `PORT`, `TICK_MS`, `INITIAL_NODES`, `TARGET_TEMP`, `AMBIENT_TEMP`, `CORS_ORIGIN`, `NODE_QUEUE_CAPACITY`, `STACK_CAPACITY`, `LOG_CAPACITY`, `MAX_CONSECUTIVE_FAILURES`, `RULES_FILE`.
 
-## Commit Convention
-**All commits in Spanish** (imperative mood): `feat: ...`, `fix: ...`, `docs: ...`, `init: ...`
-
-## Architecture Notes
-- **Layered architecture**: `core/` (interfaces) → `platform/` (Arduino) → `drivers/` (HW) → `services/` (app logic)
-- Dependency injection: services receive interfaces, not concrete types
-- `core/` compiles on host for unit tests; `platform/`/`drivers/` are Arduino-specific
-- Auto-discovery runs once in `begin()` via `OneWire::search()`; ignores invalid CRC / non-0x28 family
-- Failure handling: increments `consecutiveFailures` on bad read (-127°C, 85°C, disconnected); marks `connected=false` after `MAX_CONSECUTIVE_FAILURES`; resets on success
-- ArduinoSTL provides std::vector, std::map, std::string on AVR
-
-## PlatformIO Environments
-- `uno` — Arduino Uno target (AVR)
-- `native_test` — Host unit tests with Unity (requires gcc)
+## Commits
+Todos los commits en español, imperativo: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. Nunca commitees artefactos de build (`node_modules/`, `dist/`, `.pio/` — ignorados).
