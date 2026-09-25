@@ -1,6 +1,6 @@
 # AGENTS.md - WAItt Simulador de Temperatura
 
-WAItt es un simulador de monitoreo térmico: un backend en Node.js/TypeScript (Express + Socket.IO) que replica la lógica del antiguo firmware Arduino (modelo térmico, nodos con estados, colas FIFO, pila LIFO y reglas reactivas hot-editable) y una interfaz React (Vite) que lo consume. No hay hardware ni código Arduino (eliminados en `0ad1655`).
+WAItt (acrónimo del **Sistema de cuidado del agua mediante técnicas de inteligencia artificial y estrangulamiento térmico**) es un simulador de monitoreo térmico: un backend en Node.js/TypeScript (Express + Socket.IO) que replica la lógica del antiguo firmware Arduino (modelo térmico, nodos con estados, colas FIFO, pila LIFO y reglas reactivas hot-editable) y una interfaz React (Vite) que lo consume. No hay hardware ni código Arduino (eliminados en `0ad1655`).
 
 ## Comandos
 - Los shims `pnpm`/`npm` de PowerShell están bloqueados por la policy de ejecución: usa siempre `pnpm.cmd`/`npm.cmd`.
@@ -21,6 +21,7 @@ WAItt es un simulador de monitoreo térmico: un backend en Node.js/TypeScript (E
 - Sin comentarios en el código.
 
 ## Repo quirks
+- El proyecto se llama **WAItt**. "TIA" solo sobrevive en las URLs de GitHub (`HectorPOsuna/TIA` en `.versionrc.json`/changelog), la env `INITIAL_*` y el `TIA.ino` histórico del README: no hay que renombrarlas.
 - `frontend/` usa npm pero tiene `pnpm-lock.yaml` y `package-lock.json` AMBOS commiteados: no añadir un tercer lockfile e instala con `npm.cmd` para actualizar el lockfile real.
 - `pnpm` 12 exige aprobar builds en `backend/pnpm-workspace.yaml` (`allowBuilds: { esbuild: true }`); `pnpm.onlyBuiltDependencies` en `package.json` se ignora.
 - `data/default-rules.json` se carga al arranque (`RULES_FILE`); el "estado en error" de un nodo es un contador de fallos consecutivos simulado, no hardware.
@@ -33,6 +34,8 @@ Env en `backend/.env` (ver `backend/.env.example`): `PORT`, `TICK_MS`, `INITIAL_
 Todos en español, imperativo: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. Nunca commitees artefactos de build (`node_modules/`, `dist/`, `.pio/` — ignorados).
 
 ## Changelog
-- `CHANGELOG.md` (raíz) se genera con `commit-and-tag-version` (config en `.versionrc.json` de la raíz, secciones en español). No se edita a mano.
-- Al no haber tags previos, la herramienta barre toda la historia: el release inicial `v1.0.0` se generó con `--first-release` y se limpió de la etapa clase/Arduino (commit `1488f4f`).
-- Los commits convencionales de la etapa clase/firmware (anteriores a `d9a605b`) quedan fuera del changelog.
+- `CHANGELOG.md` (raíz) se genera con `commit-and-tag-version` (config `.versionrc.json` de la raíz: header WAItt, secciones en español, URLs `HectorPOsuna/TIA`). No se edita a mano excepto limpieza histórica puntual.
+- Los flags NO se reenvían con `pnpm.cmd run`: `release -- --first-release` descarta `--first-release` y puede bumpar mal la versión (incidente real: bumped a 1.1.0). Con flags usa `pnpm.cmd exec commit-and-tag-version --config ../.versionrc.json <flags>` (p. ej. `--first-release` o `--skip.commit --skip.tag` para regenerar sin commit/tag).
+- Normalmente `release` solo prepende la sección nueva y conserva las anteriores. Solo sin tags previos barre toda la historia: así se generó `v1.0.0` y se limpió a mano la etapa clase/firmware pre-`d9a605b`, que no debe re-entrar al changelog.
+- Las fechas se generan en UTC y pueden mostrar el día siguiente al local: no "corregirlas" a mano.
+- Tags actuales: `v1.0.0`, `v1.0.1`. Ignora el tag `v1.0` suelto (apunta al merge `48e341b`); el tool usa el tag semver más cercano a HEAD.
