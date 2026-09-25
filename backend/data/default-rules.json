@@ -1,0 +1,78 @@
+[
+  {
+    "name": "Ventilador por temperatura alta",
+    "enabled": true,
+    "cooldownMs": 30000,
+    "subject": "any",
+    "metric": "temperature",
+    "op": ">",
+    "value": 55,
+    "action": "fan_on",
+    "actionParams": {
+      "minutes": 2
+    }
+  },
+  {
+    "name": "Reducir carga por temperatura",
+    "enabled": true,
+    "cooldownMs": 45000,
+    "subject": "any",
+    "metric": "temperature",
+    "op": ">",
+    "value": 58,
+    "action": "reduce_load",
+    "actionParams": {
+      "by": 0.3
+    }
+  },
+  {
+    "name": "Encolar tarea de enfriamiento",
+    "enabled": true,
+    "cooldownMs": 60000,
+    "subject": "any",
+    "metric": "temperature",
+    "op": ">",
+    "value": 60,
+    "action": "enqueue_task",
+    "actionParams": {
+      "taskType": "cooldown",
+      "durationMs": 8000,
+      "description": "Enfriamiento programado por regla"
+    }
+  },
+  {
+    "name": "Alerta crítica de temperatura",
+    "enabled": true,
+    "cooldownMs": 60000,
+    "subject": "any",
+    "metric": "temperature",
+    "op": ">",
+    "value": 75,
+    "action": "send_alert",
+    "actionParams": {
+      "message": "Temperatura crítica detectada en un nodo"
+    }
+  },
+  {
+    "name": "Apagado automático por sobrecalentamiento",
+    "enabled": true,
+    "cooldownMs": 120000,
+    "subject": "any",
+    "metric": "temperature",
+    "op": ">",
+    "value": 85,
+    "action": "shutdown",
+    "actionParams": {}
+  },
+  {
+    "name": "Reactivar nodo en error",
+    "enabled": false,
+    "cooldownMs": 60000,
+    "subject": "any",
+    "metric": "status",
+    "op": "==",
+    "value": 2,
+    "action": "startup",
+    "actionParams": {}
+  }
+]
