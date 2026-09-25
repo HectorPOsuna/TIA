@@ -3,6 +3,16 @@
 Todas las notas significativas de los cambios de WAItt se documentan en este archivo.
 
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
+## [1.0.1](https://github.com/HectorPOsuna/TIA/compare/v1.0.0...v1.0.1) (2026-09-25)
+
+### Mantenimiento
+
+* renombra el proyecto de TIA a WAItt ([63764b0](https://github.com/HectorPOsuna/TIA/commit/63764b0b5379f20d88c871cc3a60b0ab7385b14d))
+
+### Documentación
+
+* documenta el flujo de release y el changelog generado ([42cd8f8](https://github.com/HectorPOsuna/TIA/commit/42cd8f894d9e7890b24f690ac33c80a2e9f542d9))
+* renombra el proyecto a WAItt en README, AGENTS y guias ([fef44e6](https://github.com/HectorPOsuna/TIA/commit/fef44e620f1e8a86e8627ce4a97e51d9f2f9c8fa))
 
 ## 1.0.0 (2026-09-24)
 

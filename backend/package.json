@@ -1,6 +1,6 @@
 {
   "name": "waitt-backend",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "description": "Simulador del sistema WAItt: backend Node.js/TypeScript con API REST y WebSockets que reemplaza la lógica Arduino para desarrollo del frontend sin hardware.",
