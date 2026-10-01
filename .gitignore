@@ -14,5 +14,6 @@ build/
 dist/
 /.pio/
 *.log
+*.jsonl
 
 # Miscellaneous

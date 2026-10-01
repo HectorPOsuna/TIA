@@ -1,3 +1,5 @@
+import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import type { LogEntry, LogLevel, LogType } from '../domain/types.js';
 
 export interface LogFilters {
@@ -8,10 +10,56 @@ export interface LogFilters {
   limit?: number;
 }
 
+const isLogEntry = (value: unknown): value is LogEntry => {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.ts === 'number' &&
+    typeof entry.level === 'string' &&
+    typeof entry.type === 'string' &&
+    typeof entry.message === 'string'
+  );
+};
+
+function readPersistedLog(filePath: string, limit: number): LogEntry[] {
+  try {
+    const lines = readFileSync(resolve(process.cwd(), filePath), 'utf8').split(/\r?\n/);
+    const entries: LogEntry[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.length === 0) {
+        continue;
+      }
+      try {
+        const parsed: unknown = JSON.parse(trimmed);
+        if (isLogEntry(parsed)) {
+          entries.push(parsed);
+        }
+      } catch {
+        
+      }
+    }
+    return entries.slice(-limit);
+  } catch {
+    return [];
+  }
+}
+
 export class LogStore {
   private readonly entries: LogEntry[] = [];
+  private readonly filePath: string | null;
 
-  constructor(private readonly capacity: number) {}
+  constructor(
+    private readonly capacity: number,
+    filePath?: string,
+  ) {
+    this.filePath = filePath === undefined || filePath === '' ? null : filePath;
+    if (this.filePath !== null) {
+      this.entries.push(...readPersistedLog(this.filePath, this.capacity));
+    }
+  }
 
   get size(): number {
     return this.entries.length;
@@ -37,9 +85,11 @@ export class LogStore {
       entry.meta = meta;
     }
     this.entries.push(entry);
-    if (this.entries.length > this.capacity) {
-      this.entries.splice(0, this.entries.length - this.capacity);
+    const overflow = this.entries.length - this.capacity;
+    if (overflow > 0) {
+      this.entries.splice(0, overflow);
     }
+    this.persist(overflow > 0);
     return entry;
   }
 
@@ -65,9 +115,45 @@ export class LogStore {
 
   clear(): void {
     this.entries.length = 0;
+    this.persist(true);
   }
 
   all(): LogEntry[] {
     return this.entries.map((e) => ({ ...e }));
+  }
+
+  private persist(rewrite: boolean): void {
+    if (this.filePath === null) {
+      return;
+    }
+    try {
+      if (rewrite) {
+        this.rewriteFile();
+      } else {
+        this.ensureDir();
+        const last = this.entries[this.entries.length - 1];
+        if (last !== undefined) {
+          appendFileSync(
+            resolve(process.cwd(), this.filePath),
+            `${JSON.stringify(last)}\n`,
+          );
+        }
+      }
+    } catch {
+        
+    }
+  }
+
+  private rewriteFile(): void {
+    this.ensureDir();
+    const resolved = resolve(process.cwd(), this.filePath as string);
+    const tmpPath = `${resolved}.tmp`;
+    const content = this.entries.map((e) => JSON.stringify(e)).join('\n');
+    writeFileSync(tmpPath, content.length > 0 ? `${content}\n` : '');
+    renameSync(tmpPath, resolved);
+  }
+
+  private ensureDir(): void {
+    mkdirSync(dirname(resolve(process.cwd(), this.filePath as string)), { recursive: true });
   }
 }

@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import type { RuleInput } from '../domain/types.js';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import type { Rule, RuleInput } from '../domain/types.js';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -31,5 +31,21 @@ export function loadRulesFromFile(filePath: string): RuleInput[] {
     return parsed.filter(isRuleInput);
   } catch {
     return [];
+  }
+}
+
+const toRuleInput = ({ id, lastTriggeredAt, triggerCount, ...input }: Rule): RuleInput => input;
+
+export function saveRulesToFile(filePath: string, rules: Rule[]): boolean {
+  try {
+    const path = resolve(process.cwd(), filePath);
+    mkdirSync(dirname(path), { recursive: true });
+    const tmpPath = `${path}.tmp`;
+    writeFileSync(tmpPath, `${JSON.stringify(rules.map(toRuleInput), null, 2)}\n`);
+    renameSync(tmpPath, path);
+    return true;
+  } catch {
+    console.error('[rules] no se pudo persistir reglas en', filePath);
+    return false;
   }
 }

@@ -12,6 +12,7 @@ const EnvSchema = z.object({
   NODE_QUEUE_CAPACITY: z.coerce.number().int().min(1).max(10_000).default(50),
   STACK_CAPACITY: z.coerce.number().int().min(1).max(10_000).default(20),
   LOG_CAPACITY: z.coerce.number().int().min(10).max(100_000).default(200),
+  LOG_FILE: z.string().optional().default('data/logs.jsonl'),
   MAX_CONSECUTIVE_FAILURES: z.coerce.number().int().min(1).max(255).default(5),
   PENDING_POOL_CAPACITY: z.coerce.number().int().min(1).max(10_000).default(100),
   RULES_FILE: z.string().optional().default('data/default-rules.json'),

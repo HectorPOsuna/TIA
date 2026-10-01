@@ -11,7 +11,7 @@ import { SimulationEngine } from './engine/simulationEngine.js';
 import { buildHttpServer } from './infra/httpServer.js';
 import { LogStore } from './infra/logger.js';
 import { MemoryPersistence } from './infra/persistence.js';
-import { loadRulesFromFile } from './infra/rulesLoader.js';
+import { loadRulesFromFile, saveRulesToFile } from './infra/rulesLoader.js';
 import { attachSockets } from './infra/sockets.js';
 
 const config = loadConfig();
@@ -29,7 +29,10 @@ const system = new SystemSimulation({
 });
 
 const rules = new RuleStore(loadRulesFromFile(config.RULES_FILE));
-const logs = new LogStore(config.LOG_CAPACITY);
+rules.onChange = () => {
+  saveRulesToFile(config.RULES_FILE, rules.list());
+};
+const logs = new LogStore(config.LOG_CAPACITY, config.LOG_FILE);
 const bus = new EventBus<SimEventMap>();
 const engine = new SimulationEngine({ system, rules, logs, bus }, config.TICK_MS);
 
