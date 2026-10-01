@@ -26,8 +26,57 @@ function fmt(n) {
   return n.toFixed(2)
 }
 
+const prioOpts = [1, 2, 3, 4, 5]
+const demandOpts = prioOpts
+const durationOpts = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+function TaskForm({ priority, onPriority, demand, onDemand, duration, onDuration, onSubmit, submitLabel }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+      <label style={labelSmall}>
+        prioridad
+        <select value={priority} onChange={(e) => onPriority(Number(e.target.value))}>
+          {prioOpts.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style={labelSmall}>
+        demanda
+        <select value={demand} onChange={(e) => onDemand(Number(e.target.value))}>
+          {demandOpts.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style={labelSmall}>
+        duración (s)
+        <select value={duration} onChange={(e) => onDuration(Number(e.target.value))}>
+          {durationOpts.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button type="button" onClick={onSubmit}>
+        {submitLabel}
+      </button>
+    </div>
+  )
+}
+
+const labelSmall = { fontSize: 12, display: 'flex', gap: 4, alignItems: 'center' }
+
 function NodeCard({ node, api }) {
   const { patchNode, enqueue } = api
+  const [priority, setPriority] = useState(3)
+  const [demand, setDemand] = useState(1)
+  const [duration, setDuration] = useState(8)
   return (
     <div style={card}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -44,9 +93,24 @@ function NodeCard({ node, api }) {
       </div>
       <div style={{ fontSize: 12, color: '#aaa' }}>
         cola {node.queue.size}/{node.queue.capacity}
-        {node.queue.processing && <> · procesando: {node.queue.processing.type}</>} · eventos{' '}
-        {node.stack.size}
+        {node.queue.processing && (
+          <>
+            {' '}
+            · procesando: {node.queue.processing.type} (p{node.queue.processing.priority} ·{' '}
+            {node.queue.processing.durationSecs}s)
+          </>
+        )}{' '}
+        · eventos {node.stack.size}
       </div>
+      {node.queue.list.length > 0 && (
+        <ul style={{ fontSize: 11, color: '#999', paddingLeft: 16, margin: '6px 0 0' }}>
+          {node.queue.list.map((t) => (
+            <li key={t.id}>
+              {t.type} (p{t.priority} · {t.durationSecs}s)
+            </li>
+          ))}
+        </ul>
+      )}
       <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         <button type="button" onClick={() => patchNode(node.id, { targetTemp: node.targetTemp - 5 })}>
           -5°C
@@ -57,15 +121,25 @@ function NodeCard({ node, api }) {
         <button type="button" onClick={() => patchNode(node.id, { fanActive: !node.fanActive })}>
           Ventilador {node.fanActive ? 'off' : 'on'}
         </button>
-        <button
-          type="button"
-          onClick={() =>
-            enqueue(node.id, { type: 'cooldown', estimatedDurationMs: 8000, description: 'Manual' })
-          }
-        >
-          Encolar
-        </button>
       </div>
+      <TaskForm
+        priority={priority}
+        onPriority={setPriority}
+        demand={demand}
+        onDemand={setDemand}
+        duration={duration}
+        onDuration={setDuration}
+        submitLabel="Encolar"
+        onSubmit={() =>
+          enqueue(node.id, {
+            type: 'cooldown',
+            priority,
+            computeDemand: demand,
+            durationSecs: duration,
+            description: 'Manual',
+          })
+        }
+      />
     </div>
   )
 }
@@ -74,9 +148,13 @@ export default function App() {
   const { snapshot, status, connected, alerts, api } = useSimulation()
   const { rules, triggered, api: rulesApi } = useRules()
   const [target, setTarget] = useState('')
+  const [poolPriority, setPoolPriority] = useState(5)
+  const [poolDemand, setPoolDemand] = useState(3)
+  const [poolDuration, setPoolDuration] = useState(8)
 
   const summary = snapshot?.summary
   const running = snapshot?.running ?? status?.running
+  const pool = snapshot?.pendingQueue
 
   return (
     <main style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
@@ -133,6 +211,48 @@ export default function App() {
           {[snapshot.general, ...snapshot.workers].map((node) => (
             <NodeCard key={node.id} node={node} api={api} />
           ))}
+        </section>
+      )}
+
+      {pool && (
+        <section style={{ marginTop: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0 }}>Cola de prioridad global</h2>
+            <span style={{ fontSize: 12, color: '#aaa' }}>
+              {pool.size}/{pool.capacity} pendientes
+            </span>
+            <TaskForm
+              priority={poolPriority}
+              onPriority={setPoolPriority}
+              demand={poolDemand}
+              onDemand={setPoolDemand}
+              duration={poolDuration}
+              onDuration={setPoolDuration}
+              submitLabel="Encolar al pool"
+              onSubmit={() =>
+                api.submitTask({
+                  type: 'custom',
+                  priority: poolPriority,
+                  computeDemand: poolDemand,
+                  durationSecs: poolDuration,
+                  description: 'Tarea manual al pool',
+                })
+              }
+            />
+            {pool.size > 0 && (
+              <button type="button" onClick={() => api.clearPool()}>
+                Vaciar pool
+              </button>
+            )}
+          </div>
+          <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
+            {pool.list.map((t) => (
+              <li key={t.id} style={{ fontSize: 13, padding: '2px 0', color: '#ccc' }}>
+                [{t.description ?? t.type}] p{t.priority} · demanda {t.computeDemand} · {t.durationSecs}s
+              </li>
+            ))}
+            {pool.size === 0 && <li style={{ color: '#888' }}>Sin tareas pendientes</li>}
+          </ul>
         </section>
       )}
 

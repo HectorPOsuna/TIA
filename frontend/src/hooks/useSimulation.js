@@ -11,8 +11,8 @@ async function getJson(url, options) {
   return res.json()
 }
 
-const jsonBody = (body) => ({
-  method: 'PATCH',
+const jsonBody = (body, method = 'PATCH') => ({
+  method,
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body),
 })
@@ -53,7 +53,9 @@ export function useSimulation() {
     patchSystem: (body) => getJson('/api/system', jsonBody(body)),
     patchNode: (id, body) => getJson(`/api/nodes/${id}`, jsonBody(body)),
     enqueue: (id, body) =>
-      getJson(`/api/nodes/${id}/queue`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+      getJson(`/api/nodes/${id}/queue`, jsonBody(body, 'POST')),
+    submitTask: (body) => getJson('/api/tasks', jsonBody(body, 'POST')),
+    clearPool: () => getJson('/api/tasks', { method: 'DELETE' }),
   }
 
   return { snapshot, status, connected, alerts, api }
