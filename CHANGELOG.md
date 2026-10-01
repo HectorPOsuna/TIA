@@ -3,6 +3,21 @@
 Todas las notas significativas de los cambios de WAItt se documentan en este archivo.
 
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
+## [1.1.0](https://github.com/HectorPOsuna/TIA/compare/v1.0.1...v1.1.0) (2026-10-01)
+
+### Añadido
+
+* **backend:** cola de prioridad, pool global y dispatcher ([f14cf89](https://github.com/HectorPOsuna/TIA/commit/f14cf89a6949eb91bf72c12904324ff5f144db0e))
+* **backend:** logs en consola, telemetría periódica y peticiones HTTP ([d875f2e](https://github.com/HectorPOsuna/TIA/commit/d875f2e1912cd8210e54e7f70e4dc39f6bb1b747))
+* **backend:** persistencia S5 - log JSONL en LOG_FILE y reglas sincronizadas con RULES_FILE ([a6ff7dc](https://github.com/HectorPOsuna/TIA/commit/a6ff7dc0ef8943ce950bbed39e1e8fdaf19be18a))
+* **frontend:** pool global y formularios de tarea en la UI ([033994e](https://github.com/HectorPOsuna/TIA/commit/033994e2c747b67a6252c931bf841c00783f570f))
+
+### Documentación
+
+* afina AGENTS.md con contexto de WAItt, release y tags ([20ba8de](https://github.com/HectorPOsuna/TIA/commit/20ba8ded6a9f0d3d0f1f0b2f99fb33b12f0660da))
+* documentos de colas, dispatcher, persistencia S5 y AGENTS actualizados ([2763830](https://github.com/HectorPOsuna/TIA/commit/2763830a3e31211882ad58a567bd6ae4cc71eaa8))
+* salida a consola y nuevas env de logging documentadas ([4ad1985](https://github.com/HectorPOsuna/TIA/commit/4ad198540f39d019da390c8aae0837150dec48e3))
+
 ## [1.0.1](https://github.com/HectorPOsuna/TIA/compare/v1.0.0...v1.0.1) (2026-09-25)
 
 ### Mantenimiento
