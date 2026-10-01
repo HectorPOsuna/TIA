@@ -16,6 +16,10 @@ export interface TaskEventPayload {
   task: TaskDto;
 }
 
+export interface TaskPendingPayload {
+  task: TaskDto;
+}
+
 export interface AlertPayload {
   level: 'warning' | 'critical';
   message: string;
@@ -29,5 +33,6 @@ export interface SimEventMap {
   'rule:triggered': RuleTriggeredPayload;
   'task:queued': TaskEventPayload;
   'task:completed': TaskEventPayload;
+  'task:pending': TaskPendingPayload;
   alert: AlertPayload;
 }

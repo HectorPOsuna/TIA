@@ -12,6 +12,8 @@ export const DEFAULT_THERMAL_PARAMS: ThermalParams = {
   fanDissipationMultiplier: 3,
 };
 
+export const COMPUTE_DEMAND_HEAT = 0.07;
+
 export function thermalStep(
   currentTemp: number,
   targetTemp: number,

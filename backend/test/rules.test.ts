@@ -12,6 +12,7 @@ const seed = {
   queueCapacity: 10,
   stackCapacity: 10,
   maxConsecutiveFailures: 5,
+  poolCapacity: 20,
 };
 
 function makeRule(partial: Partial<Rule>): Rule {

@@ -26,15 +26,24 @@ export const TASK_TYPE_VALUES = [
 
 export type TaskStatus = 'pending' | 'processing' | 'completed';
 
+export const TASK_PRIORITY_MIN = 1;
+export const TASK_PRIORITY_MAX = 5;
+export const COMPUTE_DEMAND_MIN = 1;
+export const COMPUTE_DEMAND_MAX = 5;
+export const DURATION_SECS_MIN = 1;
+export const DURATION_SECS_MAX = 10;
+
 export interface Task {
   id: string;
   type: TaskType;
+  priority: number;
+  computeDemand: number;
+  durationSecs: number;
   payload?: Record<string, unknown>;
   status: TaskStatus;
   enqueuedAt: number;
   startedAt?: number;
   completedAt?: number;
-  estimatedDurationMs: number;
   description?: string;
 }
 
@@ -51,12 +60,14 @@ export interface StackEntry {
 export interface TaskDto {
   id: string;
   type: TaskType;
+  priority: number;
+  computeDemand: number;
+  durationSecs: number;
   payload?: Record<string, unknown>;
   status: TaskStatus;
   enqueuedAt: number;
   startedAt?: number;
   completedAt?: number;
-  estimatedDurationMs: number;
   description?: string;
 }
 
@@ -66,6 +77,13 @@ export interface QueueDto {
   capacity: number;
   remaining: number;
   processing: TaskDto | null;
+}
+
+export interface PendingQueueDto {
+  list: TaskDto[];
+  size: number;
+  capacity: number;
+  remaining: number;
 }
 
 export interface StackDto {
@@ -157,7 +175,7 @@ export const ACTION_TYPE_VALUES = [
   'fan_off',
   'shutdown',
   'startup',
-'enqueue_task',
+  'enqueue_task',
   'send_alert',
   'reduce_load',
   'set_target_temperature',
@@ -197,4 +215,5 @@ export interface SystemSnapshotDto {
   general: NodeDto;
   workers: NodeDto[];
   summary: SystemSummary;
+  pendingQueue: PendingQueueDto;
 }

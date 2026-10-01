@@ -12,6 +12,7 @@ export function simulateRouter(ctx: AppContext): Router {
       nodesCount: ctx.system.allNodes().length,
       rulesCount: ctx.rules.count(),
       logsCount: ctx.logs.size,
+      pendingTasks: ctx.system.pendingPool.size,
     });
   });
 

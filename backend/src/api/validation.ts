@@ -1,12 +1,23 @@
 import { z } from 'zod';
 import {
   ACTION_TYPE_VALUES,
+  COMPUTE_DEMAND_MAX,
+  COMPUTE_DEMAND_MIN,
+  DURATION_SECS_MAX,
+  DURATION_SECS_MIN,
   NODE_STATUS_VALUES,
   RULE_METRIC_VALUES,
   RULE_OPERATOR_VALUES,
   RULE_SUBJECT_VALUES,
+  TASK_PRIORITY_MAX,
+  TASK_PRIORITY_MIN,
   TASK_TYPE_VALUES,
 } from '../domain/types.js';
+import {
+  DEFAULT_COMPUTE_DEMAND,
+  DEFAULT_DURATION_SECS,
+  DEFAULT_TASK_PRIORITY,
+} from '../domain/tasks.js';
 
 export const temperatureSchema = z.number().min(-60).max(150);
 export const workloadSchema = z.number().min(0).max(1);
@@ -35,7 +46,14 @@ export const createNodeSchema = z.object({
 
 export const enqueueTaskSchema = z.object({
   type: z.enum(TASK_TYPE_VALUES).default('custom'),
-  estimatedDurationMs: z.number().int().min(100).max(3_600_000).default(5000),
+  priority: z.number().int().min(TASK_PRIORITY_MIN).max(TASK_PRIORITY_MAX).default(DEFAULT_TASK_PRIORITY),
+  computeDemand: z
+    .number()
+    .int()
+    .min(COMPUTE_DEMAND_MIN)
+    .max(COMPUTE_DEMAND_MAX)
+    .default(DEFAULT_COMPUTE_DEMAND),
+  durationSecs: z.number().int().min(DURATION_SECS_MIN).max(DURATION_SECS_MAX).default(DEFAULT_DURATION_SECS),
   description: z.string().max(120).optional(),
   payload: paramsRecord.optional(),
 });

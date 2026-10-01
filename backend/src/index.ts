@@ -25,6 +25,7 @@ const system = new SystemSimulation({
   queueCapacity: config.NODE_QUEUE_CAPACITY,
   stackCapacity: config.STACK_CAPACITY,
   maxConsecutiveFailures: config.MAX_CONSECUTIVE_FAILURES,
+  poolCapacity: config.PENDING_POOL_CAPACITY,
 });
 
 const rules = new RuleStore(loadRulesFromFile(config.RULES_FILE));

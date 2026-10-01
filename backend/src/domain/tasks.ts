@@ -1,16 +1,32 @@
 import { createId } from './ids.js';
 import type { Task, TaskType } from './types.js';
+import {
+  COMPUTE_DEMAND_MAX,
+  COMPUTE_DEMAND_MIN,
+  DURATION_SECS_MAX,
+  DURATION_SECS_MIN,
+  TASK_PRIORITY_MAX,
+  TASK_PRIORITY_MIN,
+} from './types.js';
 
 export interface TaskOptions {
   type: TaskType;
-  estimatedDurationMs?: number;
+  priority?: number;
+  computeDemand?: number;
+  durationSecs?: number;
+  enqueuedAt?: number;
   payload?: Record<string, unknown>;
   description?: string;
 }
 
-export const DEFAULT_TASK_DURATION_MS = 5000;
+export const DEFAULT_TASK_PRIORITY = 3;
+export const DEFAULT_COMPUTE_DEMAND = 1;
+export const DEFAULT_DURATION_SECS = 5;
 
-export class TaskQueue {
+const clampInt = (value: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, Math.round(value)));
+
+export class PriorityTaskQueue {
   private readonly tasks: Task[] = [];
   private readonly capacityValue: number;
 
@@ -41,9 +57,19 @@ export class TaskQueue {
     const task: Task = {
       id: createId('task'),
       type: options.type,
+      priority: clampInt(options.priority ?? DEFAULT_TASK_PRIORITY, TASK_PRIORITY_MIN, TASK_PRIORITY_MAX),
+      computeDemand: clampInt(
+        options.computeDemand ?? DEFAULT_COMPUTE_DEMAND,
+        COMPUTE_DEMAND_MIN,
+        COMPUTE_DEMAND_MAX,
+      ),
+      durationSecs: clampInt(
+        options.durationSecs ?? DEFAULT_DURATION_SECS,
+        DURATION_SECS_MIN,
+        DURATION_SECS_MAX,
+      ),
       status: 'pending',
-      enqueuedAt: Date.now(),
-      estimatedDurationMs: options.estimatedDurationMs ?? DEFAULT_TASK_DURATION_MS,
+      enqueuedAt: options.enqueuedAt ?? Date.now(),
     };
     if (options.payload !== undefined) {
       task.payload = options.payload;
@@ -51,12 +77,28 @@ export class TaskQueue {
     if (options.description !== undefined) {
       task.description = options.description;
     }
-    this.tasks.push(task);
+    const index = this.tasks.findIndex((t) =>
+      t.priority > task.priority || (t.priority === task.priority && t.enqueuedAt < task.enqueuedAt),
+    );
+    if (index === -1) {
+      this.tasks.push(task);
+    } else {
+      this.tasks.splice(index, 0, task);
+    }
     return task;
   }
 
+  peek(): Task | null {
+    const task = this.tasks[this.tasks.length - 1];
+    return task === undefined ? null : { ...task };
+  }
+
+  poll(): Task | null {
+    return this.tasks.pop() ?? null;
+  }
+
   startProcessing(): Task | null {
-    const task = this.tasks.shift() ?? null;
+    const task = this.poll();
     if (task === null) {
       return null;
     }
@@ -76,6 +118,6 @@ export class TaskQueue {
   }
 
   toArray(): Task[] {
-    return this.tasks.map((t) => ({ ...t }));
+    return [...this.tasks].reverse().map((t) => ({ ...t }));
   }
 }

@@ -1,6 +1,8 @@
 import { SimNode } from './node.js';
 import type { NodeConfig } from './node.js';
-import type { NodeDto, SystemSnapshotDto } from './types.js';
+import { PriorityTaskQueue } from './tasks.js';
+import type { TaskOptions } from './tasks.js';
+import type { NodeDto, PendingQueueDto, SystemSnapshotDto, Task } from './types.js';
 
 export interface SeedOptions {
   initialNodes: number;
@@ -10,6 +12,7 @@ export interface SeedOptions {
   queueCapacity: number;
   stackCapacity: number;
   maxConsecutiveFailures: number;
+  poolCapacity: number;
 }
 
 export class SystemSimulation {
@@ -18,9 +21,11 @@ export class SystemSimulation {
 
   private readonly generalNodeValue: SimNode;
   private readonly workersValue: SimNode[] = [];
+  private readonly pendingPoolValue: PriorityTaskQueue;
 
   constructor(private readonly seed: SeedOptions) {
     this.startedAt = Date.now();
+    this.pendingPoolValue = new PriorityTaskQueue(seed.poolCapacity);
     this.generalNodeValue = new SimNode({
       id: 'node-general',
       name: 'Servidor General',
@@ -49,6 +54,10 @@ export class SystemSimulation {
 
   get ambientTemp(): number {
     return this.generalNodeValue.ambientTemp;
+  }
+
+  get pendingPool(): PriorityTaskQueue {
+    return this.pendingPoolValue;
   }
 
   private seedWorkers(): void {
@@ -99,6 +108,28 @@ export class SystemSimulation {
     for (const node of this.allNodes()) {
       node.ambientTemp = value;
     }
+  }
+
+  submitPending(options: TaskOptions): Task | null {
+    return this.pendingPoolValue.enqueue(options);
+  }
+
+  pollPending(): Task | null {
+    return this.pendingPoolValue.poll();
+  }
+
+  clearPending(): Task[] {
+    return this.pendingPoolValue.clear();
+  }
+
+  pendingSnapshot(): PendingQueueDto {
+    const list = this.pendingPoolValue.toArray();
+    return {
+      list,
+      size: list.length,
+      capacity: this.pendingPoolValue.capacity,
+      remaining: this.pendingPoolValue.remaining,
+    };
   }
 
   private averageWorkerTemp(): number | null {
@@ -152,6 +183,7 @@ export class SystemSimulation {
         errorWorkers: error,
         averageTemp: this.averageWorkerTemp() ?? general.currentTemp,
       },
+      pendingQueue: this.pendingSnapshot(),
     };
   }
 
@@ -159,6 +191,7 @@ export class SystemSimulation {
     this.startedAt = Date.now();
     this.running = true;
     this.workersValue.length = 0;
+    this.pendingPoolValue.clear();
     this.generalNodeValue.resetRuntime(this.seed.initialTemp, this.seed.targetTemp);
     this.seedWorkers();
   }

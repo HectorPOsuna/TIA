@@ -36,7 +36,8 @@
     "action": "enqueue_task",
     "actionParams": {
       "taskType": "cooldown",
-      "durationMs": 8000,
+      "priority": 4,
+      "durationSecs": 8,
       "description": "Enfriamiento programado por regla"
     }
   },

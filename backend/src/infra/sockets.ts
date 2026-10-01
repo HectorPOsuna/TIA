@@ -12,6 +12,7 @@ const EVENT_NAMES: readonly SocketEventName[] = [
   'rule:triggered',
   'task:queued',
   'task:completed',
+  'task:pending',
   'alert',
 ];
 

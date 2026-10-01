@@ -1,7 +1,7 @@
 import { EventStack } from './stack.js';
-import { TaskQueue } from './tasks.js';
+import { PriorityTaskQueue } from './tasks.js';
 import type { TaskOptions } from './tasks.js';
-import { thermalStep, DEFAULT_THERMAL_PARAMS, type ThermalParams } from './thermal.js';
+import { thermalStep, COMPUTE_DEMAND_HEAT, DEFAULT_THERMAL_PARAMS, type ThermalParams } from './thermal.js';
 import type {
   NodeDto,
   NodeStatus,
@@ -48,7 +48,7 @@ export class SimNode {
   consecutiveFailures = 0;
   updatedAt: number;
 
-  private readonly queue: TaskQueue;
+  private readonly queue: PriorityTaskQueue;
   private readonly stack: EventStack;
   private readonly maxConsecutiveFailures: number;
   private currentTask: Task | null = null;
@@ -63,7 +63,7 @@ export class SimNode {
     this.ambientTemp = config.ambientTemp ?? 20;
     this.workload = config.workload ?? 0.3;
     this.updatedAt = Date.now();
-    this.queue = new TaskQueue(config.queueCapacity ?? 50);
+    this.queue = new PriorityTaskQueue(config.queueCapacity ?? 50);
     this.stack = new EventStack(config.stackCapacity ?? 20);
     this.maxConsecutiveFailures = config.maxConsecutiveFailures ?? 5;
   }
@@ -102,17 +102,28 @@ export class SimNode {
 
   thermalStep(dtMs: number, params: ThermalParams = DEFAULT_THERMAL_PARAMS): void {
     if (this.active) {
+      const computeHeat =
+        this.currentTask === null ? 0 : this.currentTask.computeDemand * COMPUTE_DEMAND_HEAT;
       this.currentTemp = thermalStep(
         this.currentTemp,
         this.targetTemp,
         this.ambientTemp,
-        this.workload,
+        this.workload + computeHeat,
         true,
         this.fanActive,
         dtMs,
         params,
       );
     }
+  }
+
+  startExternalTask(task: Task): void {
+    this.currentTask = task;
+    task.status = 'processing';
+    task.startedAt = Date.now();
+    this.pushEvent('task', `Tarea asignada (${task.type}) en ${this.id}`, task.id, {
+      taskId: task.id,
+    });
   }
 
   expireFanIfNeeded(now: number): boolean {

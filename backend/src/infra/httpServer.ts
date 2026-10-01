@@ -5,6 +5,7 @@ import { nodesRouter } from '../api/nodes.routes.js';
 import { rulesRouter } from '../api/rules.routes.js';
 import { simulateRouter } from '../api/simulate.routes.js';
 import { systemRouter } from '../api/system.routes.js';
+import { tasksRouter } from '../api/tasks.routes.js';
 import type { AppContext } from '../api/context.js';
 
 export function buildHttpServer(ctx: AppContext, corsOrigin: string): express.Express {
@@ -27,6 +28,7 @@ export function buildHttpServer(ctx: AppContext, corsOrigin: string): express.Ex
   app.use('/api/rules', rulesRouter(ctx));
   app.use('/api/logs', logsRouter(ctx));
   app.use('/api/sim', simulateRouter(ctx));
+  app.use('/api/tasks', tasksRouter(ctx));
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'recurso no encontrado' });

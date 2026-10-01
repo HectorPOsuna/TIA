@@ -1,5 +1,18 @@
-import { DEFAULT_TASK_DURATION_MS } from './tasks.js';
+import {
+  DEFAULT_COMPUTE_DEMAND,
+  DEFAULT_DURATION_SECS,
+  DEFAULT_TASK_PRIORITY,
+} from './tasks.js';
+import type { TaskOptions } from './tasks.js';
 import type { Task, TaskType } from './types.js';
+import {
+  COMPUTE_DEMAND_MAX,
+  COMPUTE_DEMAND_MIN,
+  DURATION_SECS_MAX,
+  DURATION_SECS_MIN,
+  TASK_PRIORITY_MAX,
+  TASK_PRIORITY_MIN,
+} from './types.js';
 import type { SimNode } from './node.js';
 
 export interface ActionLogger {
@@ -27,6 +40,38 @@ const strParam = (params: Record<string, unknown> | undefined, key: string, fall
 };
 
 const FAN_MINUTES_DEFAULT = 2;
+
+const clampInt = (value: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, Math.round(value)));
+
+export function taskOptionsFromActionParams(
+  params: Record<string, unknown> | undefined,
+): TaskOptions {
+  const type = strParam(params, 'taskType', 'cooldown') as TaskType;
+  const description = strParam(params, 'description', `Tarea automática (${type})`);
+  const rawDurationSecs = numParam(params, 'durationSecs', Number.NaN);
+  const rawDurationMs = numParam(params, 'durationMs', Number.NaN);
+  const durationSecs = Number.isFinite(rawDurationSecs)
+    ? clampInt(rawDurationSecs, DURATION_SECS_MIN, DURATION_SECS_MAX)
+    : Number.isFinite(rawDurationMs)
+      ? clampInt(rawDurationMs / 1000, DURATION_SECS_MIN, DURATION_SECS_MAX)
+      : DEFAULT_DURATION_SECS;
+  return {
+    type,
+    description,
+    priority: clampInt(
+      numParam(params, 'priority', DEFAULT_TASK_PRIORITY),
+      TASK_PRIORITY_MIN,
+      TASK_PRIORITY_MAX,
+    ),
+    computeDemand: clampInt(
+      numParam(params, 'computeDemand', DEFAULT_COMPUTE_DEMAND),
+      COMPUTE_DEMAND_MIN,
+      COMPUTE_DEMAND_MAX,
+    ),
+    durationSecs,
+  };
+}
 
 export function runAction(
   action: string,
@@ -70,10 +115,8 @@ export function runAction(
       break;
     }
     case 'enqueue_task': {
-      const type = strParam(params, 'taskType', 'cooldown') as TaskType;
-      const durationMs = numParam(params, 'durationMs', DEFAULT_TASK_DURATION_MS);
-      const description = strParam(params, 'description', `Tarea automática (${type})`);
-      const result = node.enqueueTask({ type, estimatedDurationMs: durationMs, description });
+      const options = taskOptionsFromActionParams(params);
+      const result = node.enqueueTask(options);
       if (result.task !== null && emitter.onTaskQueued !== undefined) {
         emitter.onTaskQueued(node.id, result.task);
       }
@@ -84,7 +127,12 @@ export function runAction(
           ? `Tarea encolada en ${node.id} por regla`
           : `No se pudo encolar tarea en ${node.id}: ${result.reason}`,
         node.id,
-        { action, type, taskId: result.task?.id, reason: result.reason },
+        {
+          action,
+          type: options.type,
+          taskId: result.task?.id,
+          reason: result.reason,
+        },
       );
       break;
     }

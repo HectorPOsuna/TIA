@@ -1,4 +1,5 @@
-import { runAction } from '../domain/actions.js';
+import { runAction, taskOptionsFromActionParams } from '../domain/actions.js';
+import { dispatchHighestPriority } from '../domain/dispatcher.js';
 import { evaluateRule } from '../domain/rules.js';
 import type { RuleStore } from '../domain/rules-store.js';
 import type { SystemSimulation } from '../domain/system.js';
@@ -99,7 +100,7 @@ export class SimulationEngine {
 
   private step(dtMs: number): void {
     this.deps.system.tickThermalAll(dtMs);
-    this.processQueues();
+    this.processTasks();
     this.evaluateRules();
 
     const now = Date.now();
@@ -113,7 +114,7 @@ export class SimulationEngine {
     this.deps.bus.emit('state:update', this.deps.system.getSnapshot());
   }
 
-  private processQueues(): void {
+  private processTasks(): void {
     const { system, bus, logs } = this.deps;
     const now = Date.now();
 
@@ -121,7 +122,7 @@ export class SimulationEngine {
       const current = node.processingTask;
       if (current !== null) {
         const startedAt = current.startedAt ?? now;
-        if (now - startedAt >= current.estimatedDurationMs) {
+        if (now - startedAt >= current.durationSecs * 1000) {
           const completed = node.completeCurrentTask(now);
           if (completed !== null) {
             bus.emit('task:completed', { nodeId: node.id, task: completed });
@@ -134,17 +135,38 @@ export class SimulationEngine {
             );
           }
         }
-      } else {
-        const started = node.startNextTask();
-        if (started !== null) {
-          logs.add(
-            'info',
-            'task',
-            `Procesando tarea: ${started.description ?? started.type} (${node.id})`,
-            node.id,
-            { taskId: started.id },
-          );
-        }
+      }
+    }
+
+    while (true) {
+      const assignment = dispatchHighestPriority(system.workers, system.pendingPool);
+      if (assignment === null) {
+        break;
+      }
+      const { node, task } = assignment;
+      node.startExternalTask(task);
+      logs.add(
+        'info',
+        'task',
+        `Pool → tarea p${task.priority} (${task.description ?? task.type}) asignada a ${node.id}`,
+        node.id,
+        { taskId: task.id },
+      );
+    }
+
+    for (const node of [...system.workers, system.generalNode]) {
+      if (node.processingTask !== null) {
+        continue;
+      }
+      const started = node.startNextTask();
+      if (started !== null) {
+        logs.add(
+          'info',
+          'task',
+          `Procesando tarea: ${started.description ?? started.type} (${node.id})`,
+          node.id,
+          { taskId: started.id },
+        );
       }
     }
   }
@@ -165,6 +187,24 @@ export class SimulationEngine {
 
       rule.lastTriggeredAt = now;
       rule.triggerCount += 1;
+
+      if (rule.action === 'enqueue_task' && (rule.subject === 'any' || rule.subject === 'all')) {
+        const task = system.submitPending(taskOptionsFromActionParams(rule.actionParams));
+        bus.emit('rule:triggered', { rule: { ...rule }, at: now });
+        logs.add(
+          task !== null ? 'info' : 'warning',
+          'rule',
+          task !== null
+            ? `Regla "${rule.name}" disparada → tarea p${task.priority} encolada en el pool global`
+            : `Regla "${rule.name}" disparada → pool de tareas pendientes lleno`,
+          undefined,
+          { ruleId: rule.id, taskId: task?.id },
+        );
+        if (task !== null) {
+          bus.emit('task:pending', { task });
+        }
+        continue;
+      }
 
       for (const node of nodes) {
         runAction(
