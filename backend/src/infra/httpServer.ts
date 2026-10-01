@@ -8,11 +8,26 @@ import { systemRouter } from '../api/system.routes.js';
 import { tasksRouter } from '../api/tasks.routes.js';
 import type { AppContext } from '../api/context.js';
 
-export function buildHttpServer(ctx: AppContext, corsOrigin: string): express.Express {
+export function buildHttpServer(ctx: AppContext, corsOrigin: string, httpLogging = true): express.Express {
   const app = express();
 
   app.use(cors({ origin: corsOrigin }));
   app.use(express.json({ limit: '256kb' }));
+
+  if (httpLogging) {
+    app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+      const startedAt = process.hrtime.bigint();
+      res.on('finish', () => {
+        const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+        ctx.logs.add(
+          'info',
+          'api',
+          `${req.method} ${req.originalUrl} -> ${res.statusCode} (${durationMs.toFixed(1)} ms)`,
+        );
+      });
+      next();
+    });
+  }
 
   app.get('/health', (_req, res) => {
     res.json({

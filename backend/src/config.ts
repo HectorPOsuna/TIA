@@ -1,6 +1,12 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+const boolFromEnv = (defaultValue: boolean) =>
+  z
+    .enum(['true', 'false'])
+    .default(defaultValue ? 'true' : 'false')
+    .transform((value) => value === 'true');
+
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   TICK_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
@@ -13,6 +19,10 @@ const EnvSchema = z.object({
   STACK_CAPACITY: z.coerce.number().int().min(1).max(10_000).default(20),
   LOG_CAPACITY: z.coerce.number().int().min(10).max(100_000).default(200),
   LOG_FILE: z.string().optional().default('data/logs.jsonl'),
+  LOG_CONSOLE: boolFromEnv(true),
+  LOG_LEVEL: z.enum(['info', 'warning', 'critical']).default('info'),
+  LOG_HTTP: boolFromEnv(true),
+  LOG_TELEMETRY_EVERY: z.coerce.number().int().min(0).max(60_000).default(5),
   MAX_CONSECUTIVE_FAILURES: z.coerce.number().int().min(1).max(255).default(5),
   PENDING_POOL_CAPACITY: z.coerce.number().int().min(1).max(10_000).default(100),
   RULES_FILE: z.string().optional().default('data/default-rules.json'),

@@ -19,10 +19,12 @@ const MAX_DT_MS = 5000;
 export class SimulationEngine {
   private timer: NodeJS.Timeout | null = null;
   private lastTickAt: number;
+  private tickCount = 0;
 
   constructor(
     private readonly deps: EngineDeps,
     readonly tickMs: number,
+    private readonly telemetryLogEvery = 0,
   ) {
     this.lastTickAt = Date.now();
   }
@@ -99,7 +101,11 @@ export class SimulationEngine {
   }
 
   private step(dtMs: number): void {
+    this.tickCount += 1;
     this.deps.system.tickThermalAll(dtMs);
+    if (this.telemetryLogEvery > 0 && this.tickCount % this.telemetryLogEvery === 0) {
+      this.logTelemetry();
+    }
     this.processTasks();
     this.evaluateRules();
 
@@ -108,6 +114,18 @@ export class SimulationEngine {
       node.updatedAt = now;
       this.deps.bus.emit('node:updated', { nodeId: node.id, node: node.toDto() });
     }
+  }
+
+  private logTelemetry(): void {
+    const nodes = this.deps.system.allNodes();
+    const workers = nodes.filter((node) => node.type === 'worker');
+    const average =
+      workers.length === 0
+        ? null
+        : workers.reduce((acc, node) => acc + node.currentTemp, 0) / workers.length;
+    const parts = nodes.map((node) => `${node.id} ${node.currentTemp.toFixed(1)} °C`);
+    const averagePart = average === null ? '' : ` · media ${average.toFixed(1)} °C`;
+    this.deps.logs.add('info', 'node', `Telemetría (tick ${this.tickCount}): ${parts.join(' · ')}${averagePart}`);
   }
 
   private broadcast(): void {

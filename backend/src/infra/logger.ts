@@ -47,15 +47,40 @@ function readPersistedLog(filePath: string, limit: number): LogEntry[] {
   }
 }
 
+export interface ConsoleLogOptions {
+  console?: boolean;
+  level?: LogLevel;
+}
+
+const LEVEL_RANK: Record<LogLevel, number> = { info: 0, warning: 1, critical: 2 };
+
+export function formatLogEntry(entry: LogEntry): string {
+  const time = new Date(entry.ts).toTimeString().slice(0, 8);
+  const parts: string[] = [`[${time}]`, `[${entry.level}]`, `[${entry.type}]`];
+  if (entry.nodeId !== undefined) {
+    parts.push(`[${entry.nodeId}]`);
+  }
+  parts.push(entry.message);
+  if (entry.meta !== undefined && Object.keys(entry.meta).length > 0) {
+    parts.push(JSON.stringify(entry.meta));
+  }
+  return parts.join(' ');
+}
+
 export class LogStore {
   private readonly entries: LogEntry[] = [];
   private readonly filePath: string | null;
+  private readonly consoleEnabled: boolean;
+  private readonly consoleMinRank: number;
 
   constructor(
     private readonly capacity: number,
     filePath?: string,
+    consoleOptions: ConsoleLogOptions = {},
   ) {
     this.filePath = filePath === undefined || filePath === '' ? null : filePath;
+    this.consoleEnabled = consoleOptions.console ?? false;
+    this.consoleMinRank = consoleOptions.level === undefined ? 0 : LEVEL_RANK[consoleOptions.level];
     if (this.filePath !== null) {
       this.entries.push(...readPersistedLog(this.filePath, this.capacity));
     }
@@ -90,7 +115,28 @@ export class LogStore {
       this.entries.splice(0, overflow);
     }
     this.persist(overflow > 0);
+    if (this.consoleEnabled && LEVEL_RANK[entry.level] >= this.consoleMinRank) {
+      this.writeConsole(entry);
+    }
     return entry;
+  }
+
+  private writeConsole(entry: LogEntry): void {
+    const line = formatLogEntry(entry);
+    const styled = process.stdout.isTTY
+      ? entry.level === 'critical'
+        ? `\x1b[31m${line}\x1b[0m`
+        : entry.level === 'warning'
+          ? `\x1b[33m${line}\x1b[0m`
+          : `\x1b[90m${line}\x1b[0m`
+      : line;
+    if (entry.level === 'critical') {
+      console.error(styled);
+    } else if (entry.level === 'warning') {
+      console.warn(styled);
+    } else {
+      console.log(styled);
+    }
   }
 
   list(filters: LogFilters = {}): LogEntry[] {

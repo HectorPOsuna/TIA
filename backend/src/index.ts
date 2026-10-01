@@ -32,13 +32,16 @@ const rules = new RuleStore(loadRulesFromFile(config.RULES_FILE));
 rules.onChange = () => {
   saveRulesToFile(config.RULES_FILE, rules.list());
 };
-const logs = new LogStore(config.LOG_CAPACITY, config.LOG_FILE);
+const logs = new LogStore(config.LOG_CAPACITY, config.LOG_FILE, {
+  console: config.LOG_CONSOLE,
+  level: config.LOG_LEVEL,
+});
 const bus = new EventBus<SimEventMap>();
-const engine = new SimulationEngine({ system, rules, logs, bus }, config.TICK_MS);
+const engine = new SimulationEngine({ system, rules, logs, bus }, config.TICK_MS, config.LOG_TELEMETRY_EVERY);
 
 const ctx: AppContext = { system, rules, logs, engine, bus };
 
-const app = buildHttpServer(ctx, config.CORS_ORIGIN);
+const app = buildHttpServer(ctx, config.CORS_ORIGIN, config.LOG_HTTP);
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {

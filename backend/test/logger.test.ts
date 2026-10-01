@@ -1,8 +1,8 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { LogStore } from '../src/infra/logger.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LogStore, formatLogEntry } from '../src/infra/logger.js';
 
 const dirs: string[] = [];
 
@@ -86,5 +86,53 @@ describe('LogStore persistente', () => {
     store.clear();
     expect(store.size).toBe(0);
     expect(readLines(file)).toHaveLength(0);
+  });
+});
+
+describe('formatLogEntry', () => {
+  it('incluye hora, nivel, tipo, nodeId, mensaje y meta', () => {
+    const store = new LogStore(10);
+    const entry = store.add('warning', 'task', 'Tarea pendiente', 'node-1', { taskId: 'task-1' });
+
+    const line = formatLogEntry(entry);
+    expect(line).toContain('[warning] [task] [node-1] Tarea pendiente');
+    expect(line).toContain('{"taskId":"task-1"}');
+    expect(line).toMatch(/^\[\d\d:\d\d:\d\d\]/);
+  });
+
+  it('omite nodeId y meta cuando no están presentes', () => {
+    const store = new LogStore(10);
+    const entry = store.add('info', 'system', 'Arrancando');
+
+    expect(formatLogEntry(entry)).toBe(
+      `[${new Date(entry.ts).toTimeString().slice(0, 8)}] [info] [system] Arrancando`,
+    );
+  });
+});
+
+describe('LogStore consola', () => {
+  it('no imprime si la consola está desactivada', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const store = new LogStore(10);
+    store.add('info', 'system', 'x');
+    expect(logSpy).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it('filtra por el nivel mínimo configurado', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const store = new LogStore(10, undefined, { console: true, level: 'warning' });
+    store.add('info', 'system', 'info');
+    store.add('warning', 'task', 'aviso');
+    store.add('critical', 'alert', 'fallo');
+
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 });
