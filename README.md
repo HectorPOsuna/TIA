@@ -2,7 +2,7 @@
 
 WAItt es el acrónimo del **Sistema de cuidado del agua mediante técnicas de inteligencia artificial y estrangulamiento térmico**.
 
-Simulador de monitorización térmica que replica el comportamiento del antiguo sistema de firmware Arduino con sensores DS18B20: modelo térmico, nodos (general + trabajadores) con estados y fallos, cola FIFO de tareas, pila LIFO de eventos y reglas reactivas que se pueden editar en caliente.
+Simulador de monitorización térmica que replica el comportamiento del antiguo sistema de firmware Arduino con sensores DS18B20: modelo térmico, nodos (general + trabajadores) con estados y fallos, colas de prioridad de tareas con pool global, pila LIFO de eventos y reglas reactivas que se pueden editar en caliente.
 
 ## Composición
 
@@ -21,7 +21,7 @@ Ver [backend/README.md](backend/README.md) para API REST, eventos WebSocket, mod
 cd backend
 pnpm.cmd install
 pnpm.cmd dev        # http://localhost:3000
-pnpm.cmd run test   # 19 tests vitest
+pnpm.cmd run test   # 38 tests vitest
 pnpm.cmd run build
 ```
 

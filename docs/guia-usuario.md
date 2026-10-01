@@ -73,6 +73,10 @@ Deberías ver el panel **WAItt · Simulador de temperatura** con una etiqueta ve
 
 Una fila muestra: número de **nodos** totales, cuántos están **activos**, **inactivos**, **en error**, la **temperatura media**, y una caja "**Objetivo global (°C)**" con su botón **Aplicar**.
 
+### Cola de prioridad global
+
+La sección **Cola de prioridad global** muestra el pool central de tareas pendientes (`X/Y`, con `Y = PENDING_POOL_CAPACITY`). Elige **prioridad** (1–5, 5 = la más urgente), **demanda de cómputo** (1–5) y **duración** (1–10 s) y pulsa **Encolar al pool**. Cada tick, el dispatcher asigna la tarea de mayor prioridad al **nodo activo libre más frío**; si no hay ningún nodo elegible, la tarea espera en el pool. **Vaciar pool** elimina las pendientes.
+
 ### Tarjeta de cada nodo
 
 Cada nodo (el **Servidor General** y los trabajadores `Servidor 1`, `Servidor 2`, …) se muestra en una tarjeta con:
@@ -80,9 +84,10 @@ Cada nodo (el **Servidor General** y los trabajadores `Servidor 1`, `Servidor 2`
 - **Nombre** y estado: `active` (activo), `inactive` (inactivo) o `error`.
 - **Temperatura actual** en grados; junto al número aparece un icono de ventilador (💨) si el ventilador está encendido.
 - **Objetivo**, **ambiente** y **carga de trabajo** actuales.
-- **Cola de tareas**: tamaño usado frente a capacidad (`X/Y`) y, si hay una tarea en curso, el tipo que se está procesando (por ejemplo `processing: cooldown`).
+- **Cola de tareas**: tamaño usado frente a capacidad (`X/Y`), la tarea en curso con su tipo, prioridad y duración (por ejemplo `processing: cooldown (p4 · 8s)`), y la lista de tareas esperando.
 - **Eventos de la pila**: el número de eventos registrados recientemente en el nodo.
-- Botones de acción: **−5°C** / **+5°C** (ajustan el objetivo de ese nodo), **Ventilador on/off** y **Encolar** (añade una tarea de enfriamiento a la cola del nodo).
+- Botones de acción: **−5°C** / **+5°C** (ajustan el objetivo de ese nodo) y **Ventilador on/off**.
+- Formulario **Encolar** (prioridad, demanda y duración) que añade una tarea a la cola local del nodo.
 
 ### Reglas reactivas
 
@@ -106,17 +111,32 @@ La sección **Alertas** muestra los últimos avisos importantes (hasta 20). Cada
 
 ## Cómo encolar tareas y leer su progreso
 
-Pulsa **Encolar** en un nodo. Se añade una tarea de enfriamiento (`cooldown`) con una duración estimada de 8 segundos a la **cola FIFO** de ese nodo (FIFO = primero en entrar, primero en salir).
+Hay dos vías para encolar tareas:
+
+1. **Cola local del nodo** (botón **Encolar** de su tarjeta): la tarea espera turno en la
+   cola de prioridad de ese nodo concreto.
+2. **Cola de prioridad global** (sección dedicada, o la API `POST /api/tasks`): la tarea
+   entra al pool central y el **dispatcher** la asigna en cada tick al nodo activo libre más
+   frío. Así, si un trabajador está muy caliente, la tarea recae sobre uno más frío
+   (estrangulamiento térmico).
+
+Ambas vías usan los mismos parámetros:
+
+| Parámetro | Rango | Significado |
+|---|---|---|
+| `priority` | 1–5 | Urgencia; 5 se procesa antes |
+| `computeDemand` | 1–5 | Carga de cómputo: eleva la temperatura del nodo mientras se ejecuta (`demanda × 0.07`) |
+| `durationSecs` | 1–10 | Duración de la tarea en segundos |
 
 La cola tiene tres estados de tarea:
 
 | Estado | Significado |
 |---|---|
 | `pending` | En la cola, esperando turno |
-| `processing` | En curso: se muestra como "procesando: cooldown" en la tarjeta |
+| `processing` | En curso: se muestra como "procesando: cooldown (p4 · 8s)" en la tarjeta |
 | `completed` | Terminada; sale de la cola y queda reflejada en el log de eventos |
 
-Cada nodo solo procesa **una tarea a la vez**; el resto espera en la cola. Si la cola está llena, la asignación se rechaza.
+Cada nodo solo procesa **una tarea a la vez**; el resto espera en la cola. Si la cola (o el pool global) está llena, la asignación se rechaza.
 
 ## Cómo crear y editar reglas reactivas
 
@@ -140,6 +160,7 @@ Cada acción relevante queda registrada en el buffer de logs del backend (se con
 - `Simulación en pausa` / `Simulación reanudada` — cambios de estado.
 - `Tarea encolada (cooldown) en node-1` / `Tarea completada: ... en node-1` — vida de las tareas.
 - `Regla "Ventilador por temperatura alta" disparada en node-1 → acción fan_on` — reglas ejecutadas.
+- `Pool → tarea p5 (Enfriamiento programado por regla) asignada a node-2` — reparto de tareas del pool global.
 - `Ventilador activado en node-1` / `Nodo node-1 apagado` — efectos de las acciones.
 
 Los niveles son `info` (informativo), `warning` (aviso) y `critical` (crítico; las alertas por `send_alert` se registran como `critical`). También hay mensajes en el panel **Alertas** del frontend cuando una regla de alerta se dispara.
@@ -154,9 +175,11 @@ Los niveles son `info` (informativo), `warning` (aviso) y `critical` (crítico; 
 
 4. **¿El ventilador consume algo?** El ventilador acelera la disipación del calor (el modelo enfría más rápido). Se puede activar manualmente y, según la regla configurada, también automáticamente; se apaga solo tras el tiempo indicado.
 
-5. **¿Puedo encolar más de una tarea a la vez?** Sí, todas menos una esperan en la cola FIFO. Si saturas la cola, las siguientes asignaciones se rechazan.
+5. **¿Puedo encolar más de una tarea a la vez?** Sí, todas menos una esperan en la cola de prioridad (por nodo) o en el pool global. Si saturas la cola o el pool, las siguientes asignaciones se rechazan.
 
-6. **¿Reiniciar borra las reglas que creé por API?** No. Reset restaura nodos, tareas y contadores; las reglas añadidas por API siguen existiendo hasta que se eliminen o reinicie el backend.
+6. **¿Cómo decide el simulador qué tarea procesa un nodo libre?** La de mayor prioridad (1–5; a igualdad, la encolada antes). Las tareas del pool global se asignan al nodo activo libre más frío, y cada nodo procesa antes su propia cola local.
+
+7. **¿Reiniciar borra las reglas que creé por API?** No. Reset restaura nodos, tareas y contadores; las reglas añadidas por API siguen existiendo hasta que se eliminen o reinicie el backend.
 
 ## Solución de problemas
 

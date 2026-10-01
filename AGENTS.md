@@ -1,18 +1,21 @@
 # AGENTS.md - WAItt Simulador de Temperatura
 
-WAItt (acrónimo del **Sistema de cuidado del agua mediante técnicas de inteligencia artificial y estrangulamiento térmico**) es un simulador de monitoreo térmico: un backend en Node.js/TypeScript (Express + Socket.IO) que replica la lógica del antiguo firmware Arduino (modelo térmico, nodos con estados, colas FIFO, pila LIFO y reglas reactivas hot-editable) y una interfaz React (Vite) que lo consume. No hay hardware ni código Arduino (eliminados en `0ad1655`).
+WAItt (acrónimo del **Sistema de cuidado del agua mediante técnicas de inteligencia artificial y estrangulamiento térmico**) es un simulador de monitoreo térmico: un backend en Node.js/TypeScript (Express + Socket.IO) que replica la lógica del antiguo firmware Arduino (modelo térmico, nodos con estados, colas de prioridad, pila LIFO y reglas reactivas hot-editable) y una interfaz React (Vite) que lo consume. No hay hardware ni código Arduino (eliminados en `0ad1655`).
 
 ## Comandos
 - Los shims `pnpm`/`npm` de PowerShell están bloqueados por la policy de ejecución: usa siempre `pnpm.cmd`/`npm.cmd`.
-- Backend (`backend/`): `pnpm.cmd install` · `pnpm.cmd dev` (tsx watch, `http://localhost:3000`) · verificación con `pnpm.cmd run typecheck` + `pnpm.cmd run test` (vitest, 19 tests) + `pnpm.cmd run build` (emite a `dist/`). No hay lint.
+- Backend (`backend/`): `pnpm.cmd install` · `pnpm.cmd dev` (tsx watch, `http://localhost:3000`) · verificación con `pnpm.cmd run typecheck` + `pnpm.cmd run test` (vitest, 38 tests) + `pnpm.cmd run build` (emite a `dist/`). No hay lint. Un solo archivo de test: `pnpm.cmd run test test/<archivo>.test.ts` (los flags no se reenvían con `run`; los argumentos posicionales sí).
 - `typecheck` falla si hay locals/parámetros sin usar (`noUnusedLocals`/`noUnusedParameters` en tsconfig).
-- Frontend (`frontend/`, JSX sin TypeScript): `npm.cmd run dev` · `npm.cmd run build` · `npm.cmd run lint`.
+- Frontend (`frontend/`, JSX sin TypeScript, sin tests): `npm.cmd run dev` · `npm.cmd run build` · `npm.cmd run lint`.
 - Releases: `pnpm.cmd run release` en `backend/` valida (typecheck+test+build), computa la versión desde los commits convencionales, regenera el `CHANGELOG.md` de la raíz, commitea y crea el tag `vX.Y.Z`. `pnpm.cmd run release:dry` solo muestra lo que haría.
 
 ## Arquitectura backend (`backend/src/`)
-- `domain/` — lógica pura sin I/O (modelo térmico, cola FIFO, pila LIFO, nodos, sistema, reglas, acciones); `engine/` — `EventBus` tipado + `SimulationEngine`; `api/` — routers Express con validación zod; `infra/` — config, persistencia, loader de reglas, logs, Socket.IO, httpServer.
+- `domain/` — lógica pura sin I/O (modelo térmico, cola de prioridad con empate FIFO, pool global, dispatcher al nodo libre más frío, pila LIFO, nodos, sistema, reglas, acciones); `engine/` — `EventBus` tipado + `SimulationEngine`; `api/` — routers Express con validación zod; `infra/` — config, persistencia, loader de reglas, logs, Socket.IO, httpServer.
 - El tick usa tiempo real `Date.now()` con delta acotado a `MAX_DT_MS = 5000` (`simulationEngine.ts`), no un dt fijo por `TICK_MS`.
 - Las reglas se leen cada tick vía `rules.enabledList()` → se pueden editar en caliente por API sin reiniciar.
+- Tareas: cada nodo tiene su cola de prioridad (`1`=menor … `5`=mayor) y existe un pool global (`PriorityTaskQueue`, `PENDING_POOL_CAPACITY`). `enqueue_task` de una regla con `subject=any|all` inyecta **una** tarea al pool; con `subject=system|node` a la cola del nodo. El dispatcher asigna cada tick la mayor prioridad del pool al worker activo libre más frío (cola local vacía) → `startExternalTask`.
+- Persistencia: el log se vuelca a `LOG_FILE` (JSONL, misma capacidad que `LOG_CAPACITY`) y se restaura al arrancar; las reglas se sincronizan con `RULES_FILE` al crear/editar/eliminar por API (el `onChange` del `RuleStore` se engancha en `index.ts` tras construirlo para que el arranque no regrabe). El esquema BD time-series está documentado, no implementado (`PersistenceRepository` sigue en memoria).
+- Campos de tarea: `priority`, `computeDemand` (1–5, calor extra `demanda × COMPUTE_DEMAND_HEAT[0.07]`) y `durationSecs` (1–10, canónico). `durationMs` sigue aceptándose en `actionParams` de reglas (retrocompatible), no en la API.
 - IDs por prefijo con `createId`: `node-general` + `node-1..N`, `task-<id>`, `rule-<id>`. Las rutas y curl del README usan esos ids.
 
 ## Convenciones backend
@@ -28,7 +31,7 @@ WAItt (acrónimo del **Sistema de cuidado del agua mediante técnicas de intelig
 - El frontend se conecta al backend por proxy de Vite (`/api` y `/socket.io` con `ws`) → hooks en `frontend/src/hooks/` (`useSimulation`, `useRules`).
 
 ## Config
-Env en `backend/.env` (ver `backend/.env.example`): `PORT`, `TICK_MS`, `INITIAL_NODES`, `TARGET_TEMP`, `AMBIENT_TEMP`, `CORS_ORIGIN`, `NODE_QUEUE_CAPACITY`, `STACK_CAPACITY`, `LOG_CAPACITY`, `MAX_CONSECUTIVE_FAILURES`, `RULES_FILE`.
+Env en `backend/.env` (ver `backend/.env.example`): `PORT`, `TICK_MS`, `INITIAL_NODES`, `INITIAL_TEMP`, `TARGET_TEMP`, `AMBIENT_TEMP`, `CORS_ORIGIN`, `NODE_QUEUE_CAPACITY`, `STACK_CAPACITY`, `LOG_CAPACITY`, `LOG_FILE`, `MAX_CONSECUTIVE_FAILURES`, `PENDING_POOL_CAPACITY`, `RULES_FILE`.
 
 ## Commits
 Todos en español, imperativo: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. Nunca commitees artefactos de build (`node_modules/`, `dist/`, `.pio/` — ignorados).

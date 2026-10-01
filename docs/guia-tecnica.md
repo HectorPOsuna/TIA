@@ -36,32 +36,33 @@ backend/
 ├── src/
 │   ├── domain/   # Lógica pura sin I/O
 │   │   ├── types.ts / ids.ts      # DTOs, tipos de dominio y createId
-│   │   ├── node.ts                # SimNode (nodo + cola FIFO + pila LIFO)
-│   │   ├── tasks.ts               # TaskQueue (cola FIFO)
+│   │   ├── node.ts                # SimNode (nodo + cola de prioridad + pila LIFO)
+│   │   ├── tasks.ts               # PriorityTaskQueue (cola por prioridad, FIFO en empate)
 │   │   ├── stack.ts               # EventStack (pila LIFO)
-│   │   ├── thermal.ts             # Modelo térmico (thermalStep)
-│   │   ├── system.ts              # SystemSimulation (nodos, snapshot, reset)
+│   │   ├── thermal.ts             # Modelo térmico (thermalStep) + COMPUTE_DEMAND_HEAT
+│   │   ├── dispatcher.ts          # Pick del nodo libre más frío (estrangulamiento térmico)
+│   │   ├── system.ts              # SystemSimulation (nodos, pool global, snapshot, reset)
 │   │   ├── rules.ts               # Evaluación de reglas (evaluateRule)
 │   │   ├── rules-store.ts         # RuleStore (CRUD + enabledList)
 │   │   └── actions.ts             # runAction (efecto de cada acción)
 │   ├── engine/
 │   │   ├── eventBus.ts            # EventBus genérico tipado
 │   │   ├── events.ts              # SimEventMap (eventos tipados)
-│   │   └── simulationEngine.ts    # Tick, colas, reglas, cooldowns
+│   │   └── simulationEngine.ts    # Tick, tareas/dispatch, reglas, cooldowns
 │   ├── api/
 │   │   ├── context.ts             # AppContext (contexto compartido)
 │   │   ├── validation.ts          # Schemas zod + parseBody/parseQuery*
-│   │   └── *.routes.ts            # nodes / system / rules / logs / simulate
+│   │   └── *.routes.ts            # nodes / system / rules / logs / simulate / tasks
 │   ├── infra/
 │   │   ├── config.ts              # loadConfig (env → Config zod)
 │   │   ├── httpServer.ts          # Express: cors, routers, health, 404/500
-│   │   ├── socket.ts              # attachSockets (puente bus ↔ io)
+│   │   ├── sockets.ts             # attachSockets (puente bus ↔ io)
 │   │   ├── logger.ts              # LogStore (buffer en memoria)
 │   │   ├── persistence.ts         # PersistenceRepository + MemoryPersistence
 │   │   └── rulesLoader.ts         # Carga data/default-rules.json
 │   └── index.ts                   # Bootstrap (config, ctx, io, listen)
 ├── data/default-rules.json        # Reglas iniciales (hot-editable por API)
-└── test/                          # Tests vitest (thermal, tasks, rules)
+└── test/                          # Tests vitest (thermal, tasks, dispatch, rules)
 ```
 
 Responsabilidades por capa:
@@ -88,15 +89,21 @@ Un nodo representa un servidor. El sistema crea **`node-general`** (tipo `genera
 | `workload` | number | Carga de trabajo 0–1 (3 decimales) |
 | `fanActive`, `fanUntilMs` | boolean, number | Ventilador y hasta cuándo |
 | `stats` | `{failures, consecutiveFailures, maxConsecutiveFailures, ok}` | Lecturas fallidas simuladas |
-| `queue` | `QueueDto` | Estado de la cola FIFO |
+| `queue` | `QueueDto` | Estado de la cola de prioridad |
 | `stack` | `StackDto` | Estado de la pila LIFO |
 | `updatedAt` | number | Último tick |
 
 El "estado en error" es un **contador simulado** de fallos consecutivos: cuando `consecutiveFailures >= maxConsecutiveFailures` el nodo pasa a `error` (métodos `markFailure`/`recover`). No hay hardware.
 
-### Tarea y cola FIFO (`tasks.ts`)
+### Tarea y cola de prioridad (`tasks.ts`)
 
-`TaskQueue` procesa por **FIFO** (primero en entrar, primero en salir) con capacidad limitada (`NODE_QUEUE_CAPACITY`). Tipos de tarea (`TaskType`): `cooldown`, `maintenance`, `reboot`, `calibration`, `custom`. Estados: `pending → processing → completed`. Campos: `id`, `type`, `status`, `enqueuedAt`, `startedAt?`, `completedAt?`, `estimatedDurationMs` (defecto `5000`), `description?`, `payload?`.
+`PriorityTaskQueue` procesa primero la tarea de **mayor prioridad** (`priority`, 1 = menor … 5 = mayor) y, en empate, la **más antigua** (FIFO), con capacidad limitada (`NODE_QUEUE_CAPACITY` por nodo, `PENDING_POOL_CAPACITY` para el pool global). API: `enqueue`, `peek` (solo lectura), `poll` (extrae), `startProcessing`, `complete`, `clear`, `toArray` (orden de servicio).
+
+Tipos de tarea (`TaskType`): `cooldown`, `maintenance`, `reboot`, `calibration`, `custom`. Estados: `pending → processing → completed`. Campos: `id`, `type`, `priority`, `computeDemand` (1–5), `durationSecs` (1–10, defecto `5`), `status`, `enqueuedAt`, `startedAt?`, `completedAt?`, `description?`, `payload?`.
+
+### Dispatcher (`dispatcher.ts`)
+
+`dispatchHighestPriority(workers, pool)` toma `pool.peek()` (la mayor prioridad) y lo asigna al candidato elegido por `pickCoolestWorker`: un worker **activo**, **sin tarea en curso** y con **cola local vacía**, de **menor `currentTemp`**. Devuelve `{node, task}` (la tarea ya se extrajo del pool); el motor llama a `node.startExternalTask(task)`. Así el "estrangulamiento térmico" reparte carga: el nodo más frío recibe trabajo y su temperatura sube por la demanda de cómputo.
 
 ### Evento y pila LIFO (`stack.ts`)
 
@@ -133,7 +140,7 @@ interface Rule {
 | `fan_off` | — | Apaga el ventilador |
 | `shutdown` | — | `status = 'inactive'` |
 | `startup` | — | `status = 'active'` |
-| `enqueue_task` | `taskType` (def. `cooldown`), `durationMs`, `description` | Encola tarea (emite `task:queued`) |
+| `enqueue_task` | `taskType` (def. `cooldown`), `priority?` (1–5), `computeDemand?` (1–5), `durationSecs?` (1–10) o `durationMs` (retrocompatible), `description` | Encola tarea: con `subject=any\|all` entra **al pool global** (emite `task:pending`); con `subject=system\|node` a la cola del nodo (emite `task:queued`) |
 | `send_alert` | `message` | Log crítico + evento WebSocket `alert` |
 | `reduce_load` | `by` (def. 0.3) | Baja `workload` (mínimo 0) |
 | `set_target_temperature` | `target` | Ajusta `targetTemp` |
@@ -143,8 +150,8 @@ interface Rule {
 - `start()` usa `setInterval(tick, TICK_MS)`. El tick calcula `dt = min(Date.now() - lastTickAt, MAX_DT_MS)` con `MAX_DT_MS = 5000` — **tiempo real**, no un delta fijo (evita "saltos" si el proceso se bloquea).
 - Orden del tick (`step(dtMs)`):
   1. `system.tickThermalAll(dtMs)` — térmica de cada nodo + expiración de ventiladores.
-  2. `processQueues()` — si hay tarea en curso la completa cuando `now - startedAt >= estimatedDurationMs`; si no, arranca la siguiente (`startNextTask`).
-  3. `evaluateRules()` — recorre `rules.enabledList()` (las reglas se leen **cada tick** → edits en caliente vía API), respeta `cooldownMs`, ejecuta `runAction` por nodo y emite `rule:triggered` (+ `alert` si la acción es `send_alert`).
+  2. `processTasks()` — completa tareas vencidas (`now - startedAt >= durationSecs*1000`); después despacha el **pool global**: mientras queden tareas y workers elegibles, `dispatchHighestPriority` las asigna al nodo activo libre más frío (`startExternalTask`); finalmente, los nodos con cola local libre arrancan su siguiente tarea (`startNextTask`).
+  3. `evaluateRules()` — recorre `rules.enabledList()` (las reglas se leen **cada tick** → edits en caliente vía API), respeta `cooldownMs`, ejecuta `runAction` por nodo y emite `rule:triggered` (+ `alert` si la acción es `send_alert`). La acción `enqueue_task` con `subject=any|all` inyecta **una** tarea al pool global en vez de una por nodo.
   4. Emite `node:updated` por nodo y `state:update` (snapshot).
 - `pause()`/`resume()` detienen/reanudan el intervalo. `stepOnce()` permite avanzar un tick manualmente **solo en pausa** (si está corriendo lanza un error que la API traduce a HTTP 409).
 - `reset()` restaura nodos, colas, pilas y contadores de reglas. El motor arranca con `engine.start()` al levantar el servidor.
@@ -152,10 +159,10 @@ interface Rule {
 Modelo térmico (`thermal.ts`):
 
 ```
-dT/dt = (target − T) / τ + loadHeatGain·workload − dissipationRate·(T − ambient)·(fan ? 3 : 1)
+dT/dt = (target − T) / τ + loadHeatGain·(workload + demanda×COMPUTE_DEMAND_HEAT) − dissipationRate·(T − ambient)·(fan ? 3 : 1)
 ```
 
-Con constantes por defecto: `timeConstantMs = 20000`, `loadHeatGain = 0.35`, `dissipationRate = 0.002`, `fanDissipationMultiplier = 3`. Un nodo inactivo no cambia de temperatura.
+Con constantes por defecto: `timeConstantMs = 20000`, `loadHeatGain = 0.35`, `dissipationRate = 0.002`, `fanDissipationMultiplier = 3`, `COMPUTE_DEMAND_HEAT = 0.07`. Un nodo inactivo no cambia de temperatura; la tarea en curso aporta `computeDemand × 0.07` a la carga efectiva.
 
 ## API REST
 
@@ -177,11 +184,23 @@ Prefijo `/api`. Errores de validación → `400 {error, issues}`; recurso inexis
 | PATCH | `/:id` | `{name?, status?, targetTemp?, ambientTemp?, workload?, fanActive?, fanMinutes?}` | `{node}` |
 | DELETE | `/:id` | — | 204 (400 si es el general) |
 | GET | `/:id/queue` | — | `{queue: QueueDto}` |
-| POST | `/:id/queue` | `{type?='custom', estimatedDurationMs?=5000, description?, payload?}` | 201 `{task}` o 409 |
+| POST | `/:id/queue` | `{type?='custom', priority?=3, computeDemand?=1, durationSecs?=5, description?, payload?}` | 201 `{task}` o 409 |
 | DELETE | `/:id/queue` | — | `{removed: n}` |
 | GET | `/:id/stack` | — | `{stack: StackDto}` |
 
 La cola en `QueueDto`: `{list, size, capacity, remaining, processing}`.
+
+### `/api/tasks`
+
+Pool global de tareas pendientes (cola de prioridad).
+
+| Método | Ruta | Body | Respuesta |
+|---|---|---|---|
+| GET | `/` | — | `{pending: PendingQueueDto}` |
+| POST | `/` | `{type?='custom', priority?=3, computeDemand?=1, durationSecs?=5, description?, payload?}` | 201 `{task}` o 409 (pool lleno) |
+| DELETE | `/` | — | `{removed: n}` |
+
+`PendingQueueDto`: `{list, size, capacity, remaining}`.
 
 ### `/api/system`
 
@@ -190,7 +209,7 @@ La cola en `QueueDto`: `{list, size, capacity, remaining, processing}`.
 | GET | `/` | — | `{system: SystemSnapshotDto}` |
 | PATCH | `/` | `{targetTemp?, ambientTemp?, running?}` | `{system}` |
 
-`SystemSnapshotDto`: `{ts, running, targetTemp, ambientTemp, general, workers[], summary{totalWorkers, activeWorkers, inactiveWorkers, errorWorkers, averageTemp}}`.
+`SystemSnapshotDto`: `{ts, running, targetTemp, ambientTemp, general, workers[], summary{totalWorkers, activeWorkers, inactiveWorkers, errorWorkers, averageTemp}, pendingQueue{list, size, capacity, remaining}}`.
 
 ### `/api/rules`
 
@@ -234,7 +253,7 @@ curl -X POST http://localhost:3000/api/rules -H "Content-Type: application/json"
 
 | Método | Ruta | Respuesta |
 |---|---|---|
-| GET | `/status` | `{running, tickMs, uptimeMs, nodesCount, rulesCount, logsCount}` |
+| GET | `/status` | `{running, tickMs, uptimeMs, nodesCount, rulesCount, logsCount, pendingTasks}` |
 | POST | `/pause` | `{running:false}` |
 | POST | `/resume` | `{running:true}` |
 | POST | `/tick` | `{ok:true, tickMs}` o 409 si está corriendo |
@@ -249,8 +268,9 @@ El servidor sobrescribe en `infra/sockets.ts`: cada evento del bus se reenvía c
 | `state:update` | `SystemSnapshotDto` | Cada tick y tras pausa/resume/reset/PATCH |
 | `node:updated` | `{nodeId, node}` | Cada tick y tras cambios por API |
 | `rule:triggered` | `{rule, nodeId, at}` | Cuando una regla se dispara sobre un nodo |
-| `task:queued` | `{nodeId, task}` | Al encolar por API o por regla |
+| `task:queued` | `{nodeId, task}` | Al encolar por API o por regla en la cola de un nodo |
 | `task:completed` | `{nodeId, task}` | Cuando una tarea termina en el motor |
+| `task:pending` | `{task}` | Al entrar una tarea al pool global (API o regla `any`/`all`) |
 | `alert` | `{level:'critical', message, nodeId?, at}` | Acción `send_alert` |
 
 Los eventos emitidos salen como `io.emit(...)` (broadcast a todos los conectados); las suscripciones por nodo usan salas `node:<id>` (los eventos actuales ignoran la sala y se emiten globalmente).
@@ -278,11 +298,98 @@ Definidas en `backend/src/config.ts` (schema zod con default), ejemplo en `backe
 | `TARGET_TEMP` | `30` | Objetivo global inicial |
 | `AMBIENT_TEMP` | `20` | Ambiente global inicial |
 | `CORS_ORIGIN` | `http://localhost:5173` | Origen permitido (REST y WS) |
-| `NODE_QUEUE_CAPACITY` | `50` | Capacidad de la cola FIFO por nodo |
+| `NODE_QUEUE_CAPACITY` | `50` | Capacidad de la cola de prioridad por nodo |
 | `STACK_CAPACITY` | `20` | Capacidad de la pila LIFO |
 | `LOG_CAPACITY` | `200` | Tamaño del buffer de logs |
+| `LOG_FILE` | `data/logs.jsonl` | Archivo JSONL de persistencia del log (`""` desactiva) |
 | `MAX_CONSECUTIVE_FAILURES` | `5` | Fallos consecutivos para estado `error` (1–255) |
+| `PENDING_POOL_CAPACITY` | `100` | Capacidad del pool global de tareas pendientes (1–10000) |
 | `RULES_FILE` | `data/default-rules.json` | Reglas iniciales cargadas al arranque |
+
+## Persistencia (S5)
+
+- **Log acotado persistente** (`infra/logger.ts`): el buffer en memoria (`LOG_CAPACITY`) se
+  vuelca a `LOG_FILE` en JSONL (una `LogEntry` por línea). Cuando el buffer excede la
+  capacidad, se reescribe el archivo completo desde memoria (el archivo respeta el mismo
+  límite). Al arrancar se restaura el buffer desde el archivo, ignorando líneas corruptas;
+  `clear()` y `DELETE /api/logs` vacían también el archivo.
+- **Reglas** (`infra/rulesLoader.ts`): `RULES_FILE` es la semilla inicial. El `RuleStore`
+  expone `onChange`, enganchado en `index.ts` a `saveRulesToFile`, de modo que crear,
+  editar o eliminar reglas por API sincroniza el archivo (escritura atómica `.tmp`+rename,
+  sin los campos runtime `id`/`lastTriggeredAt`/`triggerCount`). El arranque no regraba el
+  archivo porque `onChange` se asigna tras construir el store.
+- **BD time-series**: solo existe el esquema documentado (abajo); la persistencia real se
+  enganchará en `PersistenceRepository` (aún en memoria).
+
+## Esquema preparado para BD time-series
+
+Diseño conceptual pensado para una base de datos de series temporales (InfluxDB, TimescaleDB
+o SQLite con particionado por tiempo). Dos mediciones: `telemetry` captura el estado térmico
+por nodo en cada evento de tick; `events` registra los eventos de cola/pila/log sin perder el
+detalle estructurado.
+
+### Medición `telemetry`
+
+| Campo | Tipo | Fuente |
+|---|---|---|
+| `ts` | timestamp | `NodeDto.updatedAt` (ms) |
+| `node_id` | tag | `NodeDto.id` |
+| `node_type` | tag | `NodeDto.type` (`general`/`worker`) |
+| `current_temp` | float | `NodeDto.currentTemp` |
+| `target_temp` | float | `NodeDto.targetTemp` |
+| `ambient_temp` | float | `NodeDto.ambientTemp` |
+| `workload` | float | `NodeDto.workload` |
+| `status` | field | `STATUS_CODE[NodeDto.status]` (0/1/2) |
+| `fan_active` | bool | `NodeDto.fanActive` |
+| `queue_length` | int | `NodeDto.queue.size` |
+| `stack_size` | int | `NodeDto.stack.size` |
+
+### Medición `events`
+
+| Campo | Tipo | Fuente |
+|---|---|---|
+| `ts` | timestamp | `LogEntry.ts` / `StackEntry.ts` |
+| `node_id` | tag | `nodeId` (optativo) |
+| `kind` | tag | `StackEntryKind` (`event`/`task`/`rule`/`alert`/`change`) o `LogLevel` |
+| `type` | tag | `LogType` (`system`/`api`/`rule`/`task`/`node`/`alert`) |
+| `label` | field | `StackEntry.label` |
+| `message` | field | `LogEntry.message` |
+| `meta` | field | JSON estructurado (`LogEntry.meta` / `StackEntry.meta`) |
+
+Ejemplo de DDL SQLite (los timestamps se guardan como ms y una vista por minuto resume las
+muestras para consultas rápidas):
+
+```sql
+CREATE TABLE telemetry (
+  ts INTEGER NOT NULL,
+  node_id TEXT NOT NULL,
+  node_type TEXT NOT NULL,
+  current_temp REAL,
+  target_temp REAL,
+  ambient_temp REAL,
+  workload REAL,
+  status INTEGER,
+  fan_active INTEGER,
+  queue_length INTEGER,
+  stack_size INTEGER
+);
+CREATE INDEX idx_telemetry_node_ts ON telemetry (node_id, ts DESC);
+
+CREATE TABLE events (
+  ts INTEGER NOT NULL,
+  node_id TEXT,
+  kind TEXT NOT NULL,
+  type TEXT NOT NULL,
+  label TEXT,
+  message TEXT,
+  meta TEXT
+);
+CREATE INDEX idx_events_ts ON events (ts DESC);
+```
+
+La capa de escritura implementará `PersistenceRepository` (`load`/`save`) desde el
+bootstrap; los eventos del `EventBus` (`node:updated`, `task:queued`, `alert`, …) son las
+fuentes de las filas.
 
 ## Cómo extender el proyecto
 
@@ -305,7 +412,13 @@ Añade un objeto válido en `backend/data/default-rules.json`. El `rulesLoader` 
 
 ### 4. Persistencia real
 
-`PersistenceRepository` (`infra/persistence.ts`) tiene un `MemoryPersistence` inyectado en `index.ts`. Para persistir de verdad, implementa la interfaz (`load(): SystemSnapshotDto | null`, `save(snapshot): void`) y enróscala en el bootstrap; el shutdown ya llama a `persistence.save(...)`.
+El log ya persiste en JSONL (`LOG_FILE`) y las reglas se sincronizan con `RULES_FILE`
+(véase "Persistencia (S5)"). Lo que queda en memoria es la **telemetría time-series**:
+`PersistenceRepository` (`infra/persistence.ts`) tiene un `MemoryPersistence` inyectado en
+`index.ts`; para persistir de verdad, implementa la interfaz
+(`load(): SystemSnapshotDto | null`, `save(snapshot): void`) o conecta un escritor a los
+eventos del `EventBus` siguiendo el esquema documentado; el shutdown ya llama a
+`persistence.save(...)`.
 
 ## Flujo de trabajo con git
 
@@ -317,7 +430,8 @@ pnpm.cmd run typecheck && pnpm.cmd run test && pnpm.cmd run build
 ```
 
 - `typecheck` falla con imports/locals sin usar (`noUnusedLocals`/`noUnusedParameters`).
-- 19 tests vitest en `backend/test/` (térmico, colas/pila, reglas).
+- 38 tests vitest en `backend/test/` (térmico, colas de prioridad/pila, dispatcher, reglas,
+  persistencia de log y de reglas).
 - El frontend valida con `npm.cmd run lint` y `npm.cmd run build`.
 
 Mensajes en español, imperativo, con scope: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. Ejemplos: `feat(backend): ...`, `feat(frontend): ...`. No commitear artefactos de build (`node_modules/`, `dist/`, `.pio/`).
