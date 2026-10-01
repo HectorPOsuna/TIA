@@ -38,6 +38,10 @@ Por defecto escucha en `http://localhost:3000` con `GET /health` de verificació
 | `STACK_CAPACITY` | `20` | Capacidad de la pila LIFO de eventos |
 | `LOG_CAPACITY` | `200` | Tamaño del buffer de logs en memoria |
 | `LOG_FILE` | `data/logs.jsonl` | Archivo JSONL de persistencia del log (`""` desactiva) |
+| `LOG_CONSOLE` | `true` | Imprime los logs en la consola del proceso |
+| `LOG_LEVEL` | `info` | Nivel mínimo impreso en consola (`info`/`warning`/`critical`) |
+| `LOG_HTTP` | `true` | Registra cada petición HTTP (método, ruta, status, duración) |
+| `LOG_TELEMETRY_EVERY` | `5` | Línea de telemetría (temps y media) cada N ticks; `0` desactiva |
 | `MAX_CONSECUTIVE_FAILURES` | `5` | Lecturas fallidas consecutivas antes de marcar el sensor en error |
 | `PENDING_POOL_CAPACITY` | `100` | Capacidad del pool global de tareas pendientes (cola de prioridad) |
 | `RULES_FILE` | `data/default-rules.json` | Ruta del JSON de reglas iniciales |

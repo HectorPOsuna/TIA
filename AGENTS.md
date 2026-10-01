@@ -31,7 +31,7 @@ WAItt (acrónimo del **Sistema de cuidado del agua mediante técnicas de intelig
 - El frontend se conecta al backend por proxy de Vite (`/api` y `/socket.io` con `ws`) → hooks en `frontend/src/hooks/` (`useSimulation`, `useRules`).
 
 ## Config
-Env en `backend/.env` (ver `backend/.env.example`): `PORT`, `TICK_MS`, `INITIAL_NODES`, `INITIAL_TEMP`, `TARGET_TEMP`, `AMBIENT_TEMP`, `CORS_ORIGIN`, `NODE_QUEUE_CAPACITY`, `STACK_CAPACITY`, `LOG_CAPACITY`, `LOG_FILE`, `MAX_CONSECUTIVE_FAILURES`, `PENDING_POOL_CAPACITY`, `RULES_FILE`.
+Env en `backend/.env` (ver `backend/.env.example`): `PORT`, `TICK_MS`, `INITIAL_NODES`, `INITIAL_TEMP`, `TARGET_TEMP`, `AMBIENT_TEMP`, `CORS_ORIGIN`, `NODE_QUEUE_CAPACITY`, `STACK_CAPACITY`, `LOG_CAPACITY`, `LOG_FILE`, `LOG_CONSOLE`, `LOG_LEVEL`, `LOG_HTTP`, `LOG_TELEMETRY_EVERY`, `MAX_CONSECUTIVE_FAILURES`, `PENDING_POOL_CAPACITY`, `RULES_FILE`.
 
 ## Commits
 Todos en español, imperativo: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. Nunca commitees artefactos de build (`node_modules/`, `dist/`, `.pio/` — ignorados).

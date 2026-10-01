@@ -302,6 +302,10 @@ Definidas en `backend/src/config.ts` (schema zod con default), ejemplo en `backe
 | `STACK_CAPACITY` | `20` | Capacidad de la pila LIFO |
 | `LOG_CAPACITY` | `200` | Tamaño del buffer de logs |
 | `LOG_FILE` | `data/logs.jsonl` | Archivo JSONL de persistencia del log (`""` desactiva) |
+| `LOG_CONSOLE` | `true` | Imprime los logs en la consola del proceso |
+| `LOG_LEVEL` | `info` | Nivel mínimo impreso en consola (`info`/`warning`/`critical`) |
+| `LOG_HTTP` | `true` | Registra cada petición HTTP (método, ruta, status, duración) |
+| `LOG_TELEMETRY_EVERY` | `5` | Línea de telemetría (temps y media) cada N ticks; `0` desactiva |
 | `MAX_CONSECUTIVE_FAILURES` | `5` | Fallos consecutivos para estado `error` (1–255) |
 | `PENDING_POOL_CAPACITY` | `100` | Capacidad del pool global de tareas pendientes (1–10000) |
 | `RULES_FILE` | `data/default-rules.json` | Reglas iniciales cargadas al arranque |
@@ -313,6 +317,11 @@ Definidas en `backend/src/config.ts` (schema zod con default), ejemplo en `backe
   capacidad, se reescribe el archivo completo desde memoria (el archivo respeta el mismo
   límite). Al arrancar se restaura el buffer desde el archivo, ignorando líneas corruptas;
   `clear()` y `DELETE /api/logs` vacían también el archivo.
+- **Salida a consola**: el `LogStore` puede espejar cada entrada a la consola del proceso
+  (`LOG_CONSOLE`, filtrada por `LOG_LEVEL`, con colores por nivel si hay TTY). Además, el
+  middleware HTTP de `httpServer.ts` registra cada petición (`LOG_HTTP`) y el motor emite
+  una línea de telemetría periódica con las temperaturas y su media (`LOG_TELEMETRY_EVERY`
+  ticks); todo ello entra también al buffer y al archivo.
 - **Reglas** (`infra/rulesLoader.ts`): `RULES_FILE` es la semilla inicial. El `RuleStore`
   expone `onChange`, enganchado en `index.ts` a `saveRulesToFile`, de modo que crear,
   editar o eliminar reglas por API sincroniza el archivo (escritura atómica `.tmp`+rename,
