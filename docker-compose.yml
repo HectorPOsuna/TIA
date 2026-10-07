@@ -1,0 +1,40 @@
+name: waitt
+
+services:
+  db:
+    image: mariadb:11
+    container_name: waitt-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      MARIADB_DATABASE: ${DB_NAME:-waitt}
+      MARIADB_USER: ${DB_USER:-waitt}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-waitt}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - waitt-db-data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "healthcheck.sh --connect --innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: waitt-phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: 64M
+    ports:
+      - "8080:80"
+
+volumes:
+  waitt-db-data:
