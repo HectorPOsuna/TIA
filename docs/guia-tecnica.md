@@ -53,13 +53,17 @@ backend/
 │   │   ├── context.ts             # AppContext (contexto compartido)
 │   │   ├── validation.ts          # Schemas zod + parseBody/parseQuery*
 │   │   └── *.routes.ts            # nodes / system / rules / logs / simulate / tasks
+│   ├── config.ts                  # loadConfig (env → Config zod)
+│   ├── config/database.ts         # loadDatabaseSettings (env DB_* → pool)
 │   ├── infra/
-│   │   ├── config.ts              # loadConfig (env → Config zod)
+│   │   ├── database.ts            # Database: conexión única estilo PDO (prepare/insert/transaction)
 │   │   ├── httpServer.ts          # Express: cors, routers, health, 404/500
 │   │   ├── sockets.ts             # attachSockets (puente bus ↔ io)
 │   │   ├── logger.ts              # LogStore (buffer en memoria)
 │   │   ├── persistence.ts         # PersistenceRepository + MemoryPersistence
-│   │   └── rulesLoader.ts         # Carga data/default-rules.json
+│   │   ├── rulesLoader.ts         # Carga data/default-rules.json
+│   │   └── timeseriesSink.ts      # EventBus → filas telemetry/events (insertMany)
+│   ├── config/database.ts         # loadDatabaseSettings (env DB_* → pool)
 │   └── index.ts                   # Bootstrap (config, ctx, io, listen)
 ├── data/default-rules.json        # Reglas iniciales (hot-editable por API)
 └── test/                          # Tests vitest (thermal, tasks, dispatch, rules)
@@ -336,11 +340,37 @@ Definidas en `backend/src/config.ts` (schema zod con default), ejemplo en `backe
   editar o eliminar reglas por API sincroniza el archivo (escritura atómica `.tmp`+rename,
   sin los campos runtime `id`/`lastTriggeredAt`/`triggerCount`). El arranque no regraba el
   archivo porque `onChange` se asigna tras construir el store.
-- **BD time-series** (`infra/timeseriesSink.ts`): con `DB_ENABLED` (defecto `true`), un
-  `TimeSeriesSink` se suscribe al `EventBus` y escribe por lotes en MariaDB/MySQL siguiendo el
-  esquema de abajo. El DDL se ejecuta al arranque desde `DB_SCHEMA_FILE` (fuente única con
-  `docker/mysql/init/01-schema.sql`, idempotente). El Docker Compose de la raíz levanta
-  MariaDB + phpMyAdmin; las credenciales de desarrollo son `waitt`/`waitt`.
+- **BD time-series**: con `DB_ENABLED` (defecto `true`), el bootstrap abre una **conexión
+  única estilo PDO** (`infra/database.ts`, config de `config/database.ts`) y un
+  `TimeSeriesSink` se suscribe al `EventBus` escribiendo por lotes en MariaDB/MySQL siguiendo
+  el esquema de abajo. El DDL se ejecuta al arranque desde `DB_SCHEMA_FILE` (fuente única con
+  `docker/mysql/init/01-schema.sql`, idempotente; también `Database.ensureSchema`). El Docker
+  Compose de la raíz levanta MariaDB + phpMyAdmin interpolando el `.env` raíz; las
+  credenciales de desarrollo son `waitt`/`waitt`.
+
+## Capa de base de datos (`Database`, estilo PDO)
+
+`config/database.ts` traduce las env `DB_*` de `loadConfig` a `DatabasePoolSettings` (host,
+puerto, base de datos, usuario, contraseña y opciones del pool) — es el **único punto que
+define la conexión**, no hay credenciales hardcodeadas en consumidores. `index.ts` hace
+`Database.open(loadDatabaseSettings(config))` (o `null` si `DB_ENABLED=false`) y la inyecta
+en el `TimeSeriesSink`; el shutdown cierra la conexión con `database.close()`.
+
+`infra/database.ts` envuelve el pool de `mysql2/promise` y ofrece una API tipo PDO:
+
+| Método | Descripción |
+|---|---|
+| `query<T>(sql, params)` | Consulta cruda por el pool (para el DDL multi-statement) |
+| `execute<T>(sql, params)` | Statement **preparado**; acepta `?` o placeholders **nombrados** `:nombre` (se expanden a bind posicional) |
+| `insert(table, row)` | `INSERT` preparado desde una fila-objeto (columnas saneadas) |
+| `insertMany(table, rows)` | `INSERT` multi-fila desde objetos; `{ affectedRows }` en vacío no ejecuta nada |
+| `transaction<T>(work)` | `BEGIN`/`COMMIT`/`ROLLBACK`/`release` sobre una **misma** conexión (`getConnection`); `work` recibe una sesión con `query`/`execute` |
+| `ensureSchema(file)` | Ejecuta el DDL una sola vez (idempotente; `null` = sin esquema); `ready` indica si quedó listo |
+| `close()` | Cierra el pool |
+
+Los identificadores de tabla y columna se validan con `/^[A-Za-z_][A-Za-z0-9_]*$/` (anti
+inyección); el bind de valores siempre va posicional/preparado. El driver es inyectable
+(`DbDriver`) para probar la capa con un recorder en `test/dbDriver.ts`.
 
 ## Esquema de la BD time-series
 
@@ -379,15 +409,17 @@ detalle estructurado.
 | `meta` | field | JSON estructurado (`LogEntry.meta` / `StackEntry.meta`) |
 
 El DDL real (MariaDB/MySQL) vive en `docker/mysql/init/01-schema.sql` — fuente única
-ejecutada tanto por Docker en el primer arranque como por el `TimeSeriesSink` al conectar.
-Los timestamps se guardan como ms y una vista `telemetry_minute` resume las muestras por
-minuto para consultas rápidas.
+ejecutada tanto por Docker en el primer arranque como por `Database.ensureSchema` al
+conectar. Los timestamps se guardan como ms y una vista `telemetry_minute` resume las
+muestras por minuto para consultas rápidas.
 
-Las filas las genera el `TimeSeriesSink` (`infra/timeseriesSink.ts`) suscrito al `EventBus`:
+Las filas las genera el `TimeSeriesSink` (`infra/timeseriesSink.ts`) suscrito al `EventBus`,
+que acumula **filas-objeto** y las vuelca con `database.insertMany`:
 `node:updated` → `telemetry`; `rule:triggered`, `task:queued/completed/pending` y `alert` →
-`events`. Escribe por lotes (cada `DB_FLUSH_MS` o `DB_MAX_BUFFER` filas) y ejecuta el DDL al
-arrancar; si la BD falla, solo registra el error (vía `onError` → log crítico) y la
-simulación continúa. `PersistenceRepository` en memoria sigue encargándose del snapshot.
+`events`. Escribe por lotes (cada `DB_FLUSH_MS` o `DB_MAX_BUFFER` filas) y ejecuta
+`ensureSchema` en cada vaciado hasta quedar listo; si la BD falla, solo registra el error
+(vía `onError` → log crítico, throttled) y la simulación continúa. `PersistenceRepository`
+en memoria sigue encargándose del snapshot.
 
 ## Cómo extender el proyecto
 
@@ -411,8 +443,11 @@ Añade un objeto válido en `backend/data/default-rules.json`. El `rulesLoader` 
 ### 4. Persistencia real
 
 El log persiste en JSONL (`LOG_FILE`), las reglas se sincronizan con `RULES_FILE` y la
-telemetría/eventos se escriben en MariaDB/MySQL vía el `TimeSeriesSink`
-(véase "Persistencia (S5)"). Lo que sigue en memoria es el estado del sistema
+telemetría/eventos se escriben en MariaDB/MySQL vía la capa `Database` + `TimeSeriesSink`
+(véase "Persistencia (S5)" y "Capa de base de datos"). Para nuevas consultas/escrituras
+reutiliza la conexión única inyectada (`config/database.ts` → `index.ts`): usa
+`execute`/`transaction` con placeholders nombrados, nunca credenciales ni SQL ensamblado en
+el consumidor. Lo que sigue en memoria es el estado del sistema
 (`PersistenceRepository` con su `MemoryPersistence` inyectado en `index.ts`): para
 persistirlo, implementa la interfaz (`load(): SystemSnapshotDto | null`,
 `save(snapshot): void`) y conéctalas en el bootstrap; el shutdown ya llama a
@@ -428,8 +463,8 @@ pnpm.cmd run typecheck && pnpm.cmd run test && pnpm.cmd run build
 ```
 
 - `typecheck` falla con imports/locals sin usar (`noUnusedLocals`/`noUnusedParameters`).
-- 38 tests vitest en `backend/test/` (térmico, colas de prioridad/pila, dispatcher, reglas,
-  persistencia de log y de reglas).
+- 57 tests vitest en `backend/test/` (térmico, colas de prioridad/pila, dispatcher, reglas,
+  persistencia de log y de reglas, capa `Database` y `TimeSeriesSink`).
 - El frontend valida con `npm.cmd run lint` y `npm.cmd run build`.
 
 Mensajes en español, imperativo, con scope: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. Ejemplos: `feat(backend): ...`, `feat(frontend): ...`. No commitear artefactos de build (`node_modules/`, `dist/`, `.pio/`).

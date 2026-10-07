@@ -64,9 +64,9 @@ Capa por directorio bajo `src/`:
 - `engine/` — `EventBus` tipado y `SimulationEngine`: avanza el tick (térmico → tareas y
   dispatch → reglas) y emite eventos.
 - `api/` — routers Express con validación zod y contexto compartido.
-- `infra/` — config de entorno, loader de reglas, logs, persistencia del log (JSONL) y
-  Socket.IO. `PersistenceRepository` (implementado en memoria) queda como punto de enganche
-  para la BD time-series futura.
+- `infra/` — config de entorno y de BD, loader de reglas, logs, persistencia del log (JSONL),
+  capa `Database`, `TimeSeriesSink` y Socket.IO. `PersistenceRepository` (implementado en
+  memoria) queda como punto de enganche para persistir el estado del sistema.
 - `index.ts` — bootstrap: configura, crea el contexto, arranca el motor y el servidor.
 
 El dominio no depende de Express ni del transport: la API y Socket.IO se suscriben al
@@ -103,13 +103,17 @@ con tareas en su cola local las procesan antes que el pool.
 - **Reglas**: `RULES_FILE` es la semilla inicial; cada alta/baja/modificación por API se
   sincroniza de vuelta al mismo archivo (escritura atómica, sin campos runtime como
   `triggerCount`).
-- **BD time-series** (`infra/timeseriesSink.ts`): si `DB_ENABLED`, un `TimeSeriesSink` se
-  suscribe al `EventBus` y escribe en MariaDB/MySQL las mediciones del esquema de
-  `docs/guia-tecnica.md`: `node:updated` → filas `telemetry`; `rule:triggered`,
-  `task:queued/completed/pending` y `alert` → filas `events`. El DDL se ejecuta al arranque
-  desde `DB_SCHEMA_FILE` y la escritura va por lotes (cada `DB_FLUSH_MS` o `DB_MAX_BUFFER`
-  filas); si la BD falla solo se loguea, la simulación sigue. El `docker-compose.yml` de la
-  raíz levanta MariaDB + phpMyAdmin.
+- **BD time-series**: si `DB_ENABLED`, el bootstrap abre una **conexión única estilo PDO** —
+  la capa `infra/database.ts` (`Database`) centraliza el pool de `mysql2` leyendo la config
+  de `config/database.ts` (`loadDatabaseSettings`) y ofrece statements **preparados**
+  (`execute`, con placeholders nombrados `:nombre`), inserts por objeto (`insert` /
+  `insertMany`) y `transaction` sobre una única conexión. El `TimeSeriesSink` se suscribe al
+  `EventBus` y escribe las mediciones del esquema de `docs/guia-tecnica.md`:
+  `node:updated` → filas `telemetry`; `rule:triggered`, `task:queued/completed/pending` y
+  `alert` → filas `events`. El DDL se ejecuta al arranque desde `DB_SCHEMA_FILE` y la
+  escritura va por lotes (cada `DB_FLUSH_MS` o `DB_MAX_BUFFER` filas) con `insertMany`; si la
+  BD falla solo se loguea, la simulación sigue. El `docker-compose.yml` de la raíz levanta
+  MariaDB + phpMyAdmin (interpolando las `DB_*` del `.env` raíz).
 
 ## API REST
 
