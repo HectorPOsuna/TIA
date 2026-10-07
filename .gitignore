@@ -16,4 +16,12 @@ dist/
 *.log
 *.jsonl
 
+# Entorno (secretos nunca versionados; la plantilla es .env.example)
+.env
+.env.*
+
+# Excepciones: se versionan las plantillas y el ejemplo de backend
+!.env.example
+!backend/.env.example
+
 # Miscellaneous
