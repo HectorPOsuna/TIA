@@ -21,9 +21,22 @@ Ver [backend/README.md](backend/README.md) para API REST, eventos WebSocket, mod
 cd backend
 pnpm.cmd install
 pnpm.cmd dev        # http://localhost:3000
-pnpm.cmd run test   # 38 tests vitest
+pnpm.cmd run test   # 47 tests vitest
 pnpm.cmd run build
 ```
+
+## Base de datos (BD time-series)
+
+El backend puede persistir la telemetría y los eventos de la simulación en MariaDB/MySQL
+(tablas `telemetry` y `events`, ver [docs/guia-tecnica.md](docs/guia-tecnica.md)). Con Docker:
+
+```bash
+docker compose up -d     # MariaDB (localhost:3306) + phpMyAdmin (http://localhost:8080)
+```
+
+Credenciales de desarrollo: BD/usuario `waitt`/`waitt` (root: `root`). El escritor se activa
+con `DB_ENABLED=true` (por defecto) y escribe por lotes; si la BD no responde, solo se loguea
+y la simulación continúa. `DB_ENABLED=false` desactiva la conexión por completo.
 
 ## Frontend
 

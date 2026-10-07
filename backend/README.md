@@ -45,6 +45,15 @@ Por defecto escucha en `http://localhost:3000` con `GET /health` de verificació
 | `MAX_CONSECUTIVE_FAILURES` | `5` | Lecturas fallidas consecutivas antes de marcar el sensor en error |
 | `PENDING_POOL_CAPACITY` | `100` | Capacidad del pool global de tareas pendientes (cola de prioridad) |
 | `RULES_FILE` | `data/default-rules.json` | Ruta del JSON de reglas iniciales |
+| `DB_ENABLED` | `true` | Activa el escritor time-series hacia MariaDB/MySQL |
+| `DB_HOST` | `localhost` | Host de la BD (`db` dentro de Docker) |
+| `DB_PORT` | `3306` | Puerto de la BD |
+| `DB_NAME` | `waitt` | Base de datos |
+| `DB_USER` | `waitt` | Usuario (creado por el docker-compose) |
+| `DB_PASSWORD` | `waitt` | Contraseña del usuario |
+| `DB_FLUSH_MS` | `1000` | Intervalo de vaciado del buffer hacia la BD |
+| `DB_MAX_BUFFER` | `1000` | Filas máximas antes de forzar un vaciado |
+| `DB_SCHEMA_FILE` | `../docker/mysql/init/01-schema.sql` | DDL ejecutado al arrancar (fuente única del esquema) |
 
 ## Arquitectura
 
@@ -94,9 +103,13 @@ con tareas en su cola local las procesan antes que el pool.
 - **Reglas**: `RULES_FILE` es la semilla inicial; cada alta/baja/modificación por API se
   sincroniza de vuelta al mismo archivo (escritura atómica, sin campos runtime como
   `triggerCount`).
-- **BD time-series**: el esquema conceptual está documentado en
-  `docs/guia-tecnica.md` (mediciones `telemetry` y `events`); la implementación se hará
-  a través de `PersistenceRepository` (aún en memoria).
+- **BD time-series** (`infra/timeseriesSink.ts`): si `DB_ENABLED`, un `TimeSeriesSink` se
+  suscribe al `EventBus` y escribe en MariaDB/MySQL las mediciones del esquema de
+  `docs/guia-tecnica.md`: `node:updated` → filas `telemetry`; `rule:triggered`,
+  `task:queued/completed/pending` y `alert` → filas `events`. El DDL se ejecuta al arranque
+  desde `DB_SCHEMA_FILE` y la escritura va por lotes (cada `DB_FLUSH_MS` o `DB_MAX_BUFFER`
+  filas); si la BD falla solo se loguea, la simulación sigue. El `docker-compose.yml` de la
+  raíz levanta MariaDB + phpMyAdmin.
 
 ## API REST
 

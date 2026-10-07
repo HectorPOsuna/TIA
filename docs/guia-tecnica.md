@@ -309,6 +309,15 @@ Definidas en `backend/src/config.ts` (schema zod con default), ejemplo en `backe
 | `MAX_CONSECUTIVE_FAILURES` | `5` | Fallos consecutivos para estado `error` (1–255) |
 | `PENDING_POOL_CAPACITY` | `100` | Capacidad del pool global de tareas pendientes (1–10000) |
 | `RULES_FILE` | `data/default-rules.json` | Reglas iniciales cargadas al arranque |
+| `DB_ENABLED` | `true` | Activa el escritor time-series hacia MariaDB/MySQL |
+| `DB_HOST` | `localhost` | Host de la BD (`db` dentro de Docker Compose) |
+| `DB_PORT` | `3306` | Puerto de la BD |
+| `DB_NAME` | `waitt` | Base de datos |
+| `DB_USER` | `waitt` | Usuario (creado por el docker-compose) |
+| `DB_PASSWORD` | `waitt` | Contraseña del usuario |
+| `DB_FLUSH_MS` | `1000` | Intervalo de vaciado del buffer hacia la BD |
+| `DB_MAX_BUFFER` | `1000` | Filas máximas antes de forzar un vaciado |
+| `DB_SCHEMA_FILE` | `../docker/mysql/init/01-schema.sql` | DDL ejecutado al arrancar (fuente única) |
 
 ## Persistencia (S5)
 
@@ -327,13 +336,17 @@ Definidas en `backend/src/config.ts` (schema zod con default), ejemplo en `backe
   editar o eliminar reglas por API sincroniza el archivo (escritura atómica `.tmp`+rename,
   sin los campos runtime `id`/`lastTriggeredAt`/`triggerCount`). El arranque no regraba el
   archivo porque `onChange` se asigna tras construir el store.
-- **BD time-series**: solo existe el esquema documentado (abajo); la persistencia real se
-  enganchará en `PersistenceRepository` (aún en memoria).
+- **BD time-series** (`infra/timeseriesSink.ts`): con `DB_ENABLED` (defecto `true`), un
+  `TimeSeriesSink` se suscribe al `EventBus` y escribe por lotes en MariaDB/MySQL siguiendo el
+  esquema de abajo. El DDL se ejecuta al arranque desde `DB_SCHEMA_FILE` (fuente única con
+  `docker/mysql/init/01-schema.sql`, idempotente). El Docker Compose de la raíz levanta
+  MariaDB + phpMyAdmin; las credenciales de desarrollo son `waitt`/`waitt`.
 
-## Esquema preparado para BD time-series
+## Esquema de la BD time-series
 
-Diseño conceptual pensado para una base de datos de series temporales (InfluxDB, TimescaleDB
-o SQLite con particionado por tiempo). Dos mediciones: `telemetry` captura el estado térmico
+Implementado en MariaDB/MySQL (Docker Compose de la raíz) con diseño pensado también para
+otras bases de series temporales (InfluxDB, TimescaleDB). Dos mediciones: `telemetry` captura
+el estado térmico
 por nodo en cada evento de tick; `events` registra los eventos de cola/pila/log sin perder el
 detalle estructurado.
 
@@ -365,40 +378,16 @@ detalle estructurado.
 | `message` | field | `LogEntry.message` |
 | `meta` | field | JSON estructurado (`LogEntry.meta` / `StackEntry.meta`) |
 
-Ejemplo de DDL SQLite (los timestamps se guardan como ms y una vista por minuto resume las
-muestras para consultas rápidas):
+El DDL real (MariaDB/MySQL) vive en `docker/mysql/init/01-schema.sql` — fuente única
+ejecutada tanto por Docker en el primer arranque como por el `TimeSeriesSink` al conectar.
+Los timestamps se guardan como ms y una vista `telemetry_minute` resume las muestras por
+minuto para consultas rápidas.
 
-```sql
-CREATE TABLE telemetry (
-  ts INTEGER NOT NULL,
-  node_id TEXT NOT NULL,
-  node_type TEXT NOT NULL,
-  current_temp REAL,
-  target_temp REAL,
-  ambient_temp REAL,
-  workload REAL,
-  status INTEGER,
-  fan_active INTEGER,
-  queue_length INTEGER,
-  stack_size INTEGER
-);
-CREATE INDEX idx_telemetry_node_ts ON telemetry (node_id, ts DESC);
-
-CREATE TABLE events (
-  ts INTEGER NOT NULL,
-  node_id TEXT,
-  kind TEXT NOT NULL,
-  type TEXT NOT NULL,
-  label TEXT,
-  message TEXT,
-  meta TEXT
-);
-CREATE INDEX idx_events_ts ON events (ts DESC);
-```
-
-La capa de escritura implementará `PersistenceRepository` (`load`/`save`) desde el
-bootstrap; los eventos del `EventBus` (`node:updated`, `task:queued`, `alert`, …) son las
-fuentes de las filas.
+Las filas las genera el `TimeSeriesSink` (`infra/timeseriesSink.ts`) suscrito al `EventBus`:
+`node:updated` → `telemetry`; `rule:triggered`, `task:queued/completed/pending` y `alert` →
+`events`. Escribe por lotes (cada `DB_FLUSH_MS` o `DB_MAX_BUFFER` filas) y ejecuta el DDL al
+arrancar; si la BD falla, solo registra el error (vía `onError` → log crítico) y la
+simulación continúa. `PersistenceRepository` en memoria sigue encargándose del snapshot.
 
 ## Cómo extender el proyecto
 
@@ -421,12 +410,12 @@ Añade un objeto válido en `backend/data/default-rules.json`. El `rulesLoader` 
 
 ### 4. Persistencia real
 
-El log ya persiste en JSONL (`LOG_FILE`) y las reglas se sincronizan con `RULES_FILE`
-(véase "Persistencia (S5)"). Lo que queda en memoria es la **telemetría time-series**:
-`PersistenceRepository` (`infra/persistence.ts`) tiene un `MemoryPersistence` inyectado en
-`index.ts`; para persistir de verdad, implementa la interfaz
-(`load(): SystemSnapshotDto | null`, `save(snapshot): void`) o conecta un escritor a los
-eventos del `EventBus` siguiendo el esquema documentado; el shutdown ya llama a
+El log persiste en JSONL (`LOG_FILE`), las reglas se sincronizan con `RULES_FILE` y la
+telemetría/eventos se escriben en MariaDB/MySQL vía el `TimeSeriesSink`
+(véase "Persistencia (S5)"). Lo que sigue en memoria es el estado del sistema
+(`PersistenceRepository` con su `MemoryPersistence` inyectado en `index.ts`): para
+persistirlo, implementa la interfaz (`load(): SystemSnapshotDto | null`,
+`save(snapshot): void`) y conéctalas en el bootstrap; el shutdown ya llama a
 `persistence.save(...)`.
 
 ## Flujo de trabajo con git

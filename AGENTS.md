@@ -14,7 +14,7 @@ WAItt (acrónimo del **Sistema de cuidado del agua mediante técnicas de intelig
 - El tick usa tiempo real `Date.now()` con delta acotado a `MAX_DT_MS = 5000` (`simulationEngine.ts`), no un dt fijo por `TICK_MS`.
 - Las reglas se leen cada tick vía `rules.enabledList()` → se pueden editar en caliente por API sin reiniciar.
 - Tareas: cada nodo tiene su cola de prioridad (`1`=menor … `5`=mayor) y existe un pool global (`PriorityTaskQueue`, `PENDING_POOL_CAPACITY`). `enqueue_task` de una regla con `subject=any|all` inyecta **una** tarea al pool; con `subject=system|node` a la cola del nodo. El dispatcher asigna cada tick la mayor prioridad del pool al worker activo libre más frío (cola local vacía) → `startExternalTask`.
-- Persistencia: el log se vuelca a `LOG_FILE` (JSONL, misma capacidad que `LOG_CAPACITY`) y se restaura al arrancar; las reglas se sincronizan con `RULES_FILE` al crear/editar/eliminar por API (el `onChange` del `RuleStore` se engancha en `index.ts` tras construirlo para que el arranque no regrabe). El esquema BD time-series está documentado, no implementado (`PersistenceRepository` sigue en memoria).
+- Persistencia: el log se vuelca a `LOG_FILE` (JSONL, misma capacidad que `LOG_CAPACITY`) y se restaura al arrancar; las reglas se sincronizan con `RULES_FILE` al crear/editar/eliminar por API (el `onChange` del `RuleStore` se engancha en `index.ts` tras construirlo para que el arranque no regrabe). La telemetría time-series se persiste en MariaDB/MySQL vía `TimeSeriesSink` (suscrito al `EventBus` en `infra/timeseriesSink.ts`) cuando `DB_ENABLED`, con DDL idempotente desde `DB_SCHEMA_FILE` (`docker/mysql/init/01-schema.sql`); el snapshot de `PersistenceRepository` sigue en memoria.
 - Campos de tarea: `priority`, `computeDemand` (1–5, calor extra `demanda × COMPUTE_DEMAND_HEAT[0.07]`) y `durationSecs` (1–10, canónico). `durationMs` sigue aceptándose en `actionParams` de reglas (retrocompatible), no en la API.
 - IDs por prefijo con `createId`: `node-general` + `node-1..N`, `task-<id>`, `rule-<id>`. Las rutas y curl del README usan esos ids.
 
@@ -31,7 +31,7 @@ WAItt (acrónimo del **Sistema de cuidado del agua mediante técnicas de intelig
 - El frontend se conecta al backend por proxy de Vite (`/api` y `/socket.io` con `ws`) → hooks en `frontend/src/hooks/` (`useSimulation`, `useRules`).
 
 ## Config
-Env en `backend/.env` (ver `backend/.env.example`): `PORT`, `TICK_MS`, `INITIAL_NODES`, `INITIAL_TEMP`, `TARGET_TEMP`, `AMBIENT_TEMP`, `CORS_ORIGIN`, `NODE_QUEUE_CAPACITY`, `STACK_CAPACITY`, `LOG_CAPACITY`, `LOG_FILE`, `LOG_CONSOLE`, `LOG_LEVEL`, `LOG_HTTP`, `LOG_TELEMETRY_EVERY`, `MAX_CONSECUTIVE_FAILURES`, `PENDING_POOL_CAPACITY`, `RULES_FILE`.
+Env en `backend/.env` (ver `backend/.env.example`): `PORT`, `TICK_MS`, `INITIAL_NODES`, `INITIAL_TEMP`, `TARGET_TEMP`, `AMBIENT_TEMP`, `CORS_ORIGIN`, `NODE_QUEUE_CAPACITY`, `STACK_CAPACITY`, `LOG_CAPACITY`, `LOG_FILE`, `LOG_CONSOLE`, `LOG_LEVEL`, `LOG_HTTP`, `LOG_TELEMETRY_EVERY`, `MAX_CONSECUTIVE_FAILURES`, `PENDING_POOL_CAPACITY`, `RULES_FILE`, `DB_ENABLED`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_FLUSH_MS`, `DB_MAX_BUFFER`, `DB_SCHEMA_FILE`. La BD MariaDB + phpMyAdmin se levanta con `docker compose up -d` en la raíz (`docker-compose.yml`; DDL en `docker/mysql/init/01-schema.sql`).
 
 ## Commits
 Todos en español, imperativo: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. Nunca commitees artefactos de build (`node_modules/`, `dist/`, `.pio/` — ignorados).
