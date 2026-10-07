@@ -13,6 +13,7 @@ import { LogStore } from './infra/logger.js';
 import { MemoryPersistence } from './infra/persistence.js';
 import { loadRulesFromFile, saveRulesToFile } from './infra/rulesLoader.js';
 import { attachSockets } from './infra/sockets.js';
+import { TimeSeriesSink } from './infra/timeseriesSink.js';
 
 const config = loadConfig();
 const persistence = new MemoryPersistence();
@@ -37,6 +38,23 @@ const logs = new LogStore(config.LOG_CAPACITY, config.LOG_FILE, {
   level: config.LOG_LEVEL,
 });
 const bus = new EventBus<SimEventMap>();
+const sink =
+  config.DB_ENABLED
+    ? new TimeSeriesSink(
+        {
+          host: config.DB_HOST,
+          port: config.DB_PORT,
+          database: config.DB_NAME,
+          user: config.DB_USER,
+          password: config.DB_PASSWORD,
+          flushMs: config.DB_FLUSH_MS,
+          maxBuffer: config.DB_MAX_BUFFER,
+          schemaFile: config.DB_SCHEMA_FILE,
+          onError: (message) => logs.add('critical', 'system', message),
+        },
+        bus,
+      )
+    : null;
 const engine = new SimulationEngine({ system, rules, logs, bus }, config.TICK_MS, config.LOG_TELEMETRY_EVERY);
 
 const ctx: AppContext = { system, rules, logs, engine, bus };
@@ -65,8 +83,11 @@ httpServer.listen(config.PORT, () => {
   engine.start();
 });
 
-const shutdown = (signal: string): void => {
+const shutdown = async (signal: string): Promise<void> => {
   engine.stop();
+  if (sink !== null) {
+    await sink.close();
+  }
   persistence.save(system.getSnapshot());
   logs.add('info', 'system', `Detenido por ${signal}. Snapshot guardado.`);
   process.exit(0);

@@ -26,6 +26,15 @@ const EnvSchema = z.object({
   MAX_CONSECUTIVE_FAILURES: z.coerce.number().int().min(1).max(255).default(5),
   PENDING_POOL_CAPACITY: z.coerce.number().int().min(1).max(10_000).default(100),
   RULES_FILE: z.string().optional().default('data/default-rules.json'),
+  DB_ENABLED: boolFromEnv(true),
+  DB_HOST: z.string().min(1).default('localhost'),
+  DB_PORT: z.coerce.number().int().min(1).max(65_535).default(3306),
+  DB_NAME: z.string().min(1).default('waitt'),
+  DB_USER: z.string().min(1).default('waitt'),
+  DB_PASSWORD: z.string().min(1).default('waitt'),
+  DB_FLUSH_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
+  DB_MAX_BUFFER: z.coerce.number().int().min(1).max(100_000).default(1000),
+  DB_SCHEMA_FILE: z.string().optional().default('../docker/mysql/init/01-schema.sql'),
 });
 
 export type Config = z.infer<typeof EnvSchema>;
