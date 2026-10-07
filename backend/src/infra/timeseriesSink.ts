@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { createPool, type Pool } from 'mysql2/promise';
 import type { NodeDto, TaskDto } from '../domain/types.js';
 import { STATUS_CODE } from '../domain/types.js';
 import type { EventBus } from '../engine/eventBus.js';
@@ -11,41 +8,19 @@ import type {
   TaskEventPayload,
   TaskPendingPayload,
 } from '../engine/events.js';
-
-export type QueryExecutor = (sql: string, params?: unknown[]) => Promise<unknown>;
+import type { Database, DatabaseRow } from './database.js';
 
 export interface TimeSeriesSinkOptions {
-  host: string;
-  port: number;
-  database: string;
-  user: string;
-  password: string;
+  database: Database;
   flushMs: number;
   maxBuffer: number;
   schemaFile: string | null;
-  executor?: QueryExecutor;
   onError?: (message: string) => void;
 }
 
-const TELEMETRY_SQL =
-  'INSERT INTO telemetry (ts, node_id, node_type, current_temp, target_temp, ambient_temp, workload, status, fan_active, queue_length, stack_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
-
-const EVENTS_SQL =
-  'INSERT INTO events (ts, node_id, kind, type, label, message, meta) VALUES (?, ?, ?, ?, ?, ?, ?)';
-
-function buildBulk(baseSql: string, rowCount: number): string {
-  const header = baseSql.slice(0, baseSql.indexOf('VALUES')).trimEnd();
-  const placeholders = baseSql.slice(baseSql.indexOf('VALUES') + 'VALUES'.length).trim();
-  const values = Array.from({ length: rowCount }, () => placeholders).join(', ');
-  return `${header} VALUES ${values}`;
-}
-
 export class TimeSeriesSink {
-  private readonly pool: Pool | null;
-  private readonly executor: QueryExecutor;
-  private readonly telemetryRows: unknown[][] = [];
-  private readonly eventRows: unknown[][] = [];
-  private schemaReady: boolean;
+  private readonly telemetryRows: DatabaseRow[] = [];
+  private readonly eventRows: DatabaseRow[] = [];
   private closed = false;
   private flushing = false;
   private timer: NodeJS.Timeout | null;
@@ -55,26 +30,8 @@ export class TimeSeriesSink {
     private readonly options: TimeSeriesSinkOptions,
     bus: EventBus<SimEventMap>,
   ) {
-    const pool =
-      options.executor === undefined
-        ? createPool({
-            host: options.host,
-            port: options.port,
-            database: options.database,
-            user: options.user,
-            password: options.password,
-            connectionLimit: 5,
-            multipleStatements: true,
-            connectTimeout: 3000,
-          })
-        : null;
-    this.pool = pool;
-    this.executor =
-      options.executor ?? ((sql: string, params?: unknown[]) => (pool as Pool).query(sql, params));
-    this.schemaReady = options.schemaFile === null;
     this.timer = setInterval(() => void this.flush(), options.flushMs);
     this.subscribe(bus);
-    void this.ensureSchema();
   }
 
   get pendingRows(): number {
@@ -88,9 +45,6 @@ export class TimeSeriesSink {
       this.timer = null;
     }
     await this.flush();
-    if (this.pool !== null) {
-      await this.pool.end();
-    }
   }
 
   private subscribe(bus: EventBus<SimEventMap>): void {
@@ -130,19 +84,19 @@ export class TimeSeriesSink {
   }
 
   private pushTelemetry(node: NodeDto): void {
-    this.telemetryRows.push([
-      node.updatedAt,
-      node.id,
-      node.type,
-      node.currentTemp,
-      node.targetTemp,
-      node.ambientTemp,
-      node.workload,
-      STATUS_CODE[node.status],
-      node.fanActive ? 1 : 0,
-      node.queue.size,
-      node.stack.size,
-    ]);
+    this.telemetryRows.push({
+      ts: node.updatedAt,
+      node_id: node.id,
+      node_type: node.type,
+      current_temp: node.currentTemp,
+      target_temp: node.targetTemp,
+      ambient_temp: node.ambientTemp,
+      workload: node.workload,
+      status: STATUS_CODE[node.status],
+      fan_active: node.fanActive ? 1 : 0,
+      queue_length: node.queue.size,
+      stack_size: node.stack.size,
+    });
     this.considerFlush();
   }
 
@@ -164,15 +118,15 @@ export class TimeSeriesSink {
     message: string,
     meta: Record<string, unknown> | null,
   ): void {
-    this.eventRows.push([
+    this.eventRows.push({
       ts,
-      nodeId ?? null,
+      node_id: nodeId ?? null,
       kind,
       type,
       label,
       message,
-      meta === null ? null : JSON.stringify(meta),
-    ]);
+      meta: meta === null ? null : JSON.stringify(meta),
+    });
     this.considerFlush();
   }
 
@@ -182,24 +136,16 @@ export class TimeSeriesSink {
     }
   }
 
-  private async ensureSchema(): Promise<void> {
-    if (this.schemaReady || this.closed) {
+  private async flush(): Promise<void> {
+    if (this.flushing) {
       return;
     }
     try {
-      const sql = readFileSync(resolve(process.cwd(), this.options.schemaFile as string), 'utf8');
-      await this.executor(sql);
-      this.schemaReady = true;
+      await this.options.database.ensureSchema(this.options.schemaFile);
     } catch (error) {
       this.reportError(
         `No se pudo inicializar el esquema BD: ${error instanceof Error ? error.message : String(error)}`,
       );
-    }
-  }
-
-  private async flush(): Promise<void> {
-    await this.ensureSchema();
-    if (!this.schemaReady || this.flushing) {
       return;
     }
     const telemetry = this.telemetryRows.splice(0, this.telemetryRows.length);
@@ -210,10 +156,10 @@ export class TimeSeriesSink {
     this.flushing = true;
     try {
       if (telemetry.length > 0) {
-        await this.executor(buildBulk(TELEMETRY_SQL, telemetry.length), telemetry.flat());
+        await this.options.database.insertMany('telemetry', telemetry);
       }
       if (events.length > 0) {
-        await this.executor(buildBulk(EVENTS_SQL, events.length), events.flat());
+        await this.options.database.insertMany('events', events);
       }
     } catch (error) {
       this.reportError(

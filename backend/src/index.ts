@@ -3,12 +3,14 @@ import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import type { AppContext } from './api/context.js';
 import { loadConfig } from './config.js';
+import { loadDatabaseSettings } from './config/database.js';
 import { RuleStore } from './domain/rules-store.js';
 import { SystemSimulation } from './domain/system.js';
 import type { SimEventMap } from './engine/events.js';
 import { EventBus } from './engine/eventBus.js';
 import { SimulationEngine } from './engine/simulationEngine.js';
 import { buildHttpServer } from './infra/httpServer.js';
+import { Database } from './infra/database.js';
 import { LogStore } from './infra/logger.js';
 import { MemoryPersistence } from './infra/persistence.js';
 import { loadRulesFromFile, saveRulesToFile } from './infra/rulesLoader.js';
@@ -38,23 +40,29 @@ const logs = new LogStore(config.LOG_CAPACITY, config.LOG_FILE, {
   level: config.LOG_LEVEL,
 });
 const bus = new EventBus<SimEventMap>();
+const database = config.DB_ENABLED ? Database.open(loadDatabaseSettings(config)) : null;
 const sink =
-  config.DB_ENABLED
-    ? new TimeSeriesSink(
+  database === null
+    ? null
+    : new TimeSeriesSink(
         {
-          host: config.DB_HOST,
-          port: config.DB_PORT,
-          database: config.DB_NAME,
-          user: config.DB_USER,
-          password: config.DB_PASSWORD,
+          database,
           flushMs: config.DB_FLUSH_MS,
           maxBuffer: config.DB_MAX_BUFFER,
           schemaFile: config.DB_SCHEMA_FILE,
           onError: (message) => logs.add('critical', 'system', message),
         },
         bus,
-      )
-    : null;
+      );
+if (database !== null) {
+  void database.ensureSchema(config.DB_SCHEMA_FILE).catch((error: unknown) => {
+    logs.add(
+      'critical',
+      'system',
+      `No se pudo inicializar el esquema BD: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+}
 const engine = new SimulationEngine({ system, rules, logs, bus }, config.TICK_MS, config.LOG_TELEMETRY_EVERY);
 
 const ctx: AppContext = { system, rules, logs, engine, bus };
@@ -87,6 +95,9 @@ const shutdown = async (signal: string): Promise<void> => {
   engine.stop();
   if (sink !== null) {
     await sink.close();
+  }
+  if (database !== null) {
+    await database.close();
   }
   persistence.save(system.getSnapshot());
   logs.add('info', 'system', `Detenido por ${signal}. Snapshot guardado.`);

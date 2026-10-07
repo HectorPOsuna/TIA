@@ -2,12 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { NodeDto, TaskDto } from '../src/domain/types.js';
 import { EventBus } from '../src/engine/eventBus.js';
 import type { SimEventMap } from '../src/engine/events.js';
-import { TimeSeriesSink, type QueryExecutor } from '../src/infra/timeseriesSink.js';
-
-interface Call {
-  sql: string;
-  params: unknown[];
-}
+import { Database } from '../src/infra/database.js';
+import { TimeSeriesSink } from '../src/infra/timeseriesSink.js';
+import { RecorderDriver } from './dbDriver.js';
 
 const sinks: TimeSeriesSink[] = [];
 
@@ -49,12 +46,24 @@ function makeTask(overrides: Partial<TaskDto> = {}): TaskDto {
   };
 }
 
-function fakeExecutor(): { calls: Call[]; executor: QueryExecutor } {
-  const calls: Call[] = [];
-  const executor: QueryExecutor = async (sql, params = []) => {
-    calls.push({ sql, params });
-  };
-  return { calls, executor };
+function makeSink(
+  bus: EventBus<SimEventMap>,
+  options: { maxBuffer?: number; onError?: () => void } = {},
+  driver: RecorderDriver = new RecorderDriver(),
+): { sink: TimeSeriesSink; driver: RecorderDriver } {
+  const database = Database.forDriver(driver);
+  const sink = new TimeSeriesSink(
+    {
+      database,
+      flushMs: 10,
+      maxBuffer: options.maxBuffer ?? 10,
+      schemaFile: null,
+      onError: options.onError,
+    },
+    bus,
+  );
+  sinks.push(sink);
+  return { sink, driver };
 }
 
 async function flushSettle(): Promise<void> {
@@ -69,35 +78,26 @@ afterEach(async () => {
 });
 
 describe('TimeSeriesSink telemetría', () => {
-  it('mapea node:updated a una fila de telemetry', async () => {
-    const { calls, executor } = fakeExecutor();
+  it('mapea node:updated a filas de telemetry', async () => {
     const bus = new EventBus<SimEventMap>();
-    const sink = new TimeSeriesSink(
-      {
-        host: 'localhost',
-        port: 3306,
-        database: 'waitt',
-        user: 'waitt',
-        password: 'waitt',
-        flushMs: 10,
-        maxBuffer: 10,
-        schemaFile: null,
-        executor,
-      },
-      bus,
-    );
-    sinks.push(sink);
+    const { driver } = makeSink(bus);
 
-    const fanNode = makeNode({ fanActive: true, queue: { list: [], size: 3, capacity: 50, remaining: 47, processing: [] }, stack: { list: [], size: 2, capacity: 20 } });
+    const fanNode = makeNode({
+      fanActive: true,
+      queue: { list: [], size: 3, capacity: 50, remaining: 47, processing: [] },
+      stack: { list: [], size: 2, capacity: 20 },
+    });
     bus.emit('node:updated', { nodeId: fanNode.id, node: fanNode });
     bus.emit('node:updated', { nodeId: makeNode().id, node: makeNode() });
     await flushSettle();
 
-    expect(calls).toHaveLength(1);
-    expect(calls[0].sql).toMatch(/^INSERT INTO telemetry/);
-    expect(calls[0].sql).not.toContain('VALUES VALUES');
-    expect(calls[0].sql).toContain('VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    const params = calls[0].params as unknown[];
+    expect(driver.calls).toHaveLength(1);
+    expect(driver.calls[0].sql).toMatch(/^INSERT INTO `telemetry`/);
+    expect(driver.calls[0].sql).not.toContain('VALUES VALUES');
+    expect(driver.calls[0].sql).toContain(
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    );
+    const params = driver.calls[0].params as unknown[];
     expect(params).toHaveLength(2 * 11);
     expect(params.slice(0, 11)).toEqual([
       1_700_000_000_000,
@@ -117,23 +117,8 @@ describe('TimeSeriesSink telemetría', () => {
 
 describe('TimeSeriesSink eventos', () => {
   it('mapea alert, rule:triggered y tareas a filas de events', async () => {
-    const { calls, executor } = fakeExecutor();
     const bus = new EventBus<SimEventMap>();
-    const sink = new TimeSeriesSink(
-      {
-        host: 'localhost',
-        port: 3306,
-        database: 'waitt',
-        user: 'waitt',
-        password: 'waitt',
-        flushMs: 10,
-        maxBuffer: 2,
-        schemaFile: null,
-        executor,
-      },
-      bus,
-    );
-    sinks.push(sink);
+    const { driver } = makeSink(bus, { maxBuffer: 2 });
 
     bus.emit('alert', {
       level: 'critical',
@@ -161,11 +146,19 @@ describe('TimeSeriesSink eventos', () => {
     bus.emit('task:pending', { task: makeTask() });
     await flushSettle();
 
-    const events = calls.filter((call) => call.sql.startsWith('INSERT INTO events'));
+    const events = driver.calls.filter((call) => call.sql.startsWith('INSERT INTO `events`'));
     expect(events).toHaveLength(1);
     const params = events[0].params as unknown[];
     expect(params).toHaveLength(3 * 7);
-    expect(params.slice(0, 7)).toEqual([1_700_000_000_001, 'node-2', 'alert', 'alert', 'critical', 'Temperatura crítica', null]);
+    expect(params.slice(0, 7)).toEqual([
+      1_700_000_000_001,
+      'node-2',
+      'alert',
+      'alert',
+      'critical',
+      'Temperatura crítica',
+      null,
+    ]);
     expect(params.slice(7, 14)[3]).toBe('rule');
     expect(params.slice(14, 21)[2]).toBe('task');
     expect(JSON.parse(params[20] as string)).toMatchObject({ taskId: 'task-1' });
@@ -173,30 +166,21 @@ describe('TimeSeriesSink eventos', () => {
 });
 
 describe('TimeSeriesSink errores', () => {
-  it('no lanza cuando el executor falla', async () => {
-    const executor: QueryExecutor = async () => {
-      throw new Error('conexión rechazada');
-    };
+  it('no lanza cuando la base de datos falla', async () => {
     const bus = new EventBus<SimEventMap>();
     let reported = 0;
-    const sink = new TimeSeriesSink(
+    const driver = new RecorderDriver();
+    driver.executeError = new Error('conexión rechazada');
+    const { sink } = makeSink(
+      bus,
       {
-        host: 'localhost',
-        port: 3306,
-        database: 'waitt',
-        user: 'waitt',
-        password: 'waitt',
-        flushMs: 10,
         maxBuffer: 1,
-        schemaFile: null,
-        executor,
         onError: () => {
           reported += 1;
         },
       },
-      bus,
+      driver,
     );
-    sinks.push(sink);
 
     bus.emit('node:updated', { nodeId: 'node-1', node: makeNode() });
     await flushSettle();
