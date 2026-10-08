@@ -24,4 +24,14 @@ dist/
 !.env.example
 !backend/.env.example
 
+# Python / ML (pipeline analítico S6)
+.mypy_cache/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.venv/
+ml/out/
+ml/data/
+*.joblib
+
 # Miscellaneous
