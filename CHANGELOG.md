@@ -3,6 +3,25 @@
 Todas las notas significativas de los cambios de WAItt se documentan en este archivo.
 
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
+## [1.2.0](https://github.com/HectorPOsuna/TIA/compare/v1.1.0...v1.2.0) (2026-10-08)
+
+### Añadido
+
+* **backend:** capa Database estilo PDO (conexión única, inserts preparados y transacciones) ([0baf4b7](https://github.com/HectorPOsuna/TIA/commit/0baf4b710e1c5eff33ea807c3bdb317ecfa8c9f0))
+* **backend:** escritor time-series a MariaDB vía EventBus con env DB_* ([3c14a44](https://github.com/HectorPOsuna/TIA/commit/3c14a44312a93408134970798b323ddf15d42fb2))
+* **infra:** docker compose con MariaDB 11, phpMyAdmin y esquema time-series ([2f2d410](https://github.com/HectorPOsuna/TIA/commit/2f2d410afa8bd34ee8f80106f9afd9c3e2a062c6))
+* **ml:** pipeline analítico S6 (preprocesado, modelo, métricas, anomalías y explicación con Ollama) ([a51cc1c](https://github.com/HectorPOsuna/TIA/commit/a51cc1cfcaea2653cd2e1f80e73dbd54f14f2945))
+
+### Mantenimiento
+
+* ignora ficheros .env locales ([d0c323d](https://github.com/HectorPOsuna/TIA/commit/d0c323d8db797c69356a9d63c57c9fb8af6a1f66))
+
+### Documentación
+
+* capa de base de datos y flujo de .env raíz documentados ([d3783b0](https://github.com/HectorPOsuna/TIA/commit/d3783b08b21fdcc54ab6bd1262c64600d5e4a0e1))
+* persistencia time-series documentada (BD vía docker compose) ([fe7f42a](https://github.com/HectorPOsuna/TIA/commit/fe7f42a6902adde81ea8a02730bc49f0ead9d15d))
+* pipeline analítico S6 documentado ([783f0d1](https://github.com/HectorPOsuna/TIA/commit/783f0d15ff86f34b12f87213340a27acf6a8b11e))
+
 ## [1.1.0](https://github.com/HectorPOsuna/TIA/compare/v1.0.1...v1.1.0) (2026-10-01)
 
 ### Añadido
