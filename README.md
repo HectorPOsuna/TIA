@@ -60,6 +60,14 @@ RMSE 0.087 °C frente a una baseline de persistencia con MAE 0.301 °C (mejora �
 
 ## Frontend
 
+Dashboard de control con **vista cenital 3D** (Three.js + React Three Fiber) sobre una rejilla
+automática: cada nodo es una cabina extruida cuyo color y altura reflejan su temperatura respecto
+al objetivo; al hacer clic abre el panel de controles en la barra lateral (objetivo ±5°, ventilador,
+encolar tarea, tendencia, cola/pila/fallos). La barra lateral agrupa, en secciones colapsables, el
+nodo seleccionado, la cola global (pool), las reglas reactivas y las alertas. Los últimos **600
+estados** de la sesión se guardan en el navegador y permiten **replay** del mapa térmico con
+línea de tiempo y reproducción automática.
+
 ```bash
 cd frontend
 npm.cmd install

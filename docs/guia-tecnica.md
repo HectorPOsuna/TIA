@@ -448,6 +448,43 @@ se degrada (MAE 0.301 °C) y el modelo aporta (MAE 0.078 °C, ~74 % mejor). Con
 gitignoreados y se regeneran con `ml.train`; los tests pytest (`ml/tests/`, 10) importan
 `ml.*` vía `conftest.py` que añade la raíz del repo a `sys.path`.
 
+## Arquitectura del frontend (`frontend/`)
+
+React 19 (JSX sin TypeScript) + Vite; dos hooks consumen el backend por el proxy de Vite
+(`/api` y `/socket.io` con `ws`):
+
+- `hooks/useSimulation.js`: socket `io()` singleton; `state:update` → snapshot, `alert` → alertas
+  (máx 20); state inicial vía `GET /api/system` y `GET /api/sim/status`; api REST
+  (`pause/resume/reset/patchSystem/patchNode/enqueue/submitTask/clearPool`).
+- `hooks/useRules.js`: `GET /api/rules` + refresh en `rule:triggered`; api `toggle`/`remove`.
+
+Representación 3D (Three.js + `@react-three/fiber` + `@react-three/drei`) en `three/`: la escena
+`Scene.jsx` se carga con `React.lazy` para no inflar el chunk inicial; `Floor` (rejilla de suelo),
+`NodeTile` (cabina extruida por nodo), `NodeLabel` (Html con chips) y `Layout` (rejilla automática:
+workers ordenados por id en columnas `ceil(√N)`, node-general en zona propia trasera).
+
+Detalles de implementación:
+
+- **Calor**: `heatColor(t)` (rampa azul→cian→ambar→rojo) y `tempBand(t, lo, hi)` normalizan a
+  `[0,1]` con `band = targetTemp ± 8` (calculado en `App.jsx` y compartido con la leyenda).
+  La altura del bloque crece con el calor (`0.45 + heat*1.6`, +0.35 el general).
+- **Estado**: inactive gris `#33415c`, error `#6b2f2f` con pulso rojo, ventilador → disco cian
+  giratorio. Selección: anillo pulsante cian y label siempre visible para el nodo seleccionado.
+- **Cámara**: cenital `[0, d, d*0.82]`, fov 42, `OrbitControls` sin pan (polar 0.12–1.15,
+  distancia 5–70). Nodos inactivos se renderizan a media opacidad; al pulsar se seleccionan
+  (`onSelect` en App mantiene `selectedId`).
+
+UI en `components/`: `Header` (objetivo global, pausa/resumen, reset), `SummaryBar` (resumen por
+estado), barra lateral con secciones colapsables (`CollapsiblePanel`): `NodeDetailPanel` (objetivo
+±5°, ventilador, encolar tarea, métricas, cola, `Sparkline` SVG con línea de target),
+`PoolPanel` (pool global + `TaskForm`), `RulesPanel`, `AlertsPanel` y `ReplayControls`.
+
+**Historial y replay**: `hooks/useHistory.js` acumula los últimos `MAX_SAMPLES=600` snapshots de
+`state:update` (mismo socket), guarda también un índice de replay (−1 = vivo). En modo replay,
+`App.jsx` usa `replaySnapshot` como fuente de verdad (efectiva) para la escena y los paneles;
+`ReplayControls` permite barrido manual, reproducción automática (intervalo 600 ms) y volver a
+vivo. Es 100 % client-side: no requiere backend ni persistencia adicional.
+
 ## Cómo extender el proyecto
 
 ### 1. Agregar un tipo de acción
