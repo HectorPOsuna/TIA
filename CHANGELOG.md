@@ -3,6 +3,21 @@
 Todas las notas significativas de los cambios de WAItt se documentan en este archivo.
 
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
+## [1.3.0](https://github.com/HectorPOsuna/TIA/compare/v1.2.0...v1.3.0) (2026-10-08)
+
+### Añadido
+
+* **frontend:** dashboard 3D cenital con Three.js y nodos modulares ([17480dd](https://github.com/HectorPOsuna/TIA/commit/17480ddd2afea69b47cd7c76a789b8f7e96bd5aa))
+* **frontend:** historial en sesión y replay de temperaturas ([f8e80eb](https://github.com/HectorPOsuna/TIA/commit/f8e80eb61d8c1308fa169e670d1a22f814df847f))
+
+### Mantenimiento
+
+* **frontend:** dependencias three, @react-three/fiber y drei ([e75863d](https://github.com/HectorPOsuna/TIA/commit/e75863d58cdc7879e13131801593c351d639f1de))
+
+### Documentación
+
+* dashboard 3D, replay y arquitectura frontend documentados ([0390705](https://github.com/HectorPOsuna/TIA/commit/0390705c15d5024b22207d8610eab88e0d96a8ad))
+
 ## [1.2.0](https://github.com/HectorPOsuna/TIA/compare/v1.1.0...v1.2.0) (2026-10-08)
 
 ### Añadido
