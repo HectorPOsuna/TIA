@@ -421,6 +421,33 @@ que acumula **filas-objeto** y las vuelca con `database.insertMany`:
 (vía `onError` → log crítico, throttled) y la simulación continúa. `PersistenceRepository`
 en memoria sigue encargándose del snapshot.
 
+## Pipeline analítico (S6, `ml/`)
+
+Pipeline reproducible en Python que consume la BD time-series y produce el modelo de
+predicción, las métricas y las alertas. Orquestado con `Python -m ml.train` (ver
+[ml/README.md](../ml/README.md)); cada paso es un módulo autocontenido:
+
+| Paso | Módulo | Salida |
+|---|---|---|
+| Conexión pymysql (placeholders `:nombre`, `insert_many`) | `db.py` | — |
+| Lectura de `telemetry` | `export.py` | DataFrame + snapshot CSV |
+| Feature engineering (lags t-1..t-8, delta, medias móviles, contexto, `rel_time_ms`) | `features.py` | `X`, `y`, `meta` |
+| Target a `ML_HORIZON_MS` futura vía `searchsorted` | `features.py` | serie objetivo (agnóstico a `TICK_MS`) |
+| Split cronológico 80/20 por nodo + `GradientBoostingRegressor(seed)` | `model.py` | modelo + baseline `temp_lag_1` |
+| MAE/RMSE globales y por nodo, mejora % vs baseline | `metrics.py` | `metrics.json` |
+| Umbral `media + N·σ` de residuos de test → alertas formato `events` | `anomaly.py` | `alerts.jsonl` |
+| Ollama explica el top-K (JSON `diagnostico`/`accion`, fallo no fatal) | `ollama.py` | `meta.ollama` en las alertas |
+| Orquestador y escritura opcional en `events` (`--write-db`) | `train.py` | `out/*` + filas `kind=alert, type=ai` |
+| Inferencia de producción (`predict --node`) | `predict.py` | predicción a `T+15 s` |
+
+Diseño clave: el simulador térmico es tan suave que la baseline de persistencia gana a
+horizonte corto; el pipeline predice a **15 s reales** (`ML_HORIZON_MS`), donde la baseline
+se degrada (MAE 0.301 °C) y el modelo aporta (MAE 0.078 °C, ~74 % mejor). Con
+`ML_THRESHOLD_SIGMA=3` los datos nominales no generan alertas; el ejemplo del README con
+σ=1.0 demuestra el flujo completo. Los artefactos (`ml/out/`, `ml/data/`) están
+gitignoreados y se regeneran con `ml.train`; los tests pytest (`ml/tests/`, 10) importan
+`ml.*` vía `conftest.py` que añade la raíz del repo a `sys.path`.
+
 ## Cómo extender el proyecto
 
 ### 1. Agregar un tipo de acción

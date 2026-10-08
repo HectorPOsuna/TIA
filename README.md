@@ -10,6 +10,7 @@ Simulador de monitorización térmica que replica el comportamiento del antiguo 
 |---|---|---|
 | Backend (simulador) | Node.js/TypeScript, Express + Socket.IO | `backend/` |
 | Frontend (panel) | React (Vite) | `frontend/` |
+| Pipeline analítico (IA) | Python (pandas, scikit-learn, Ollama) | `ml/` |
 
 No hay hardware ni código Arduino: el GitHub Actions / histórico lo conserva, pero el árbol actual es 100 % simulado.
 
@@ -21,7 +22,7 @@ Ver [backend/README.md](backend/README.md) para API REST, eventos WebSocket, mod
 cd backend
 pnpm.cmd install
 pnpm.cmd dev        # http://localhost:3000
-pnpm.cmd run test   # 47 tests vitest
+pnpm.cmd run test   # 57 tests vitest
 pnpm.cmd run build
 ```
 
@@ -37,6 +38,25 @@ docker compose up -d     # MariaDB (localhost:3306) + phpMyAdmin (http://localho
 Credenciales de desarrollo: BD/usuario `waitt`/`waitt` (root: `root`). El escritor se activa
 con `DB_ENABLED=true` (por defecto) y escribe por lotes; si la BD no responde, solo se loguea
 y la simulación continúa. `DB_ENABLED=false` desactiva la conexión por completo.
+
+## Pipeline analítico (IA)
+
+`ml/` es un pipeline reproducible en Python que preprocesa la telemetría, hace feature
+engineering, entrena un modelo de regresión de temperatura (GradientBoostingRegressor),
+calcula métricas basales (MAE/RMSE frente a una baseline de persistencia), detecta
+anomalías por residuo de predicción y redacta avisos con Ollama (qwen3). Ver
+[ml/README.md](ml/README.md).
+
+```bash
+cd ml
+.\.venv\Scripts\python -m ml.train            # entrena y genera ml/out/ (sin tocar la BD)
+.\.venv\Scripts\python -m ml.train --write-db # además inserta las alertas en la tabla events
+.\.venv\Scripts\python -m ml.predict --node node-1
+.\.venv\Scripts\python -m pytest tests        # 10 tests
+```
+
+Resultado de referencia (horizonte 15 s, muestra de 4 nodos, 1712 lecturas): MAE 0.078 °C,
+RMSE 0.087 °C frente a una baseline de persistencia con MAE 0.301 °C (mejora ≈ 74 %).
 
 ## Frontend
 
