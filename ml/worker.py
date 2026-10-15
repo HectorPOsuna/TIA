@@ -22,13 +22,13 @@ import pandas as pd
 
 class Worker:
     def __init__(self) -> None:
-        self.cfg = config.Settings()
+        self.cfg = config.load_settings()
         self.model, self.meta = self._load_model()
         self.buffers: Dict[str, list[Dict[str, Any]]] = {}
         self.max_buf = 25
 
     def _load_model(self):
-        out_dir = self.cfg.ROOT / "ml" / "out"
+        out_dir = self.cfg.out_dir
         model_path = out_dir / "model.joblib"
         meta_path = out_dir / "model.json"
         if not model_path.exists():
@@ -51,7 +51,7 @@ class Worker:
         t0 = time.perf_counter()
         node_id = req.get("nodeId") or req.get("node_id")
         samples = req.get("samples") or []
-        horizon_ms = req.get("horizonMs", self.cfg.ML_HORIZON_MS)
+        horizon_ms = req.get("horizonMs", self.cfg.ml_horizon_ms)
         if not node_id:
             return {"ok": False, "error": "missing nodeId"}
         rows = []
