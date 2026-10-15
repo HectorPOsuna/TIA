@@ -3,6 +3,31 @@
 Todas las notas significativas de los cambios de WAItt se documentan en este archivo.
 
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
+## [1.4.0](https://github.com/HectorPOsuna/TIA/compare/v1.3.0...v1.4.0) (2026-10-15)
+
+### Añadido
+
+* **backend:** servicio de inferencia IA integrado al EventBus, endpoints y persistencia ([8df129e](https://github.com/HectorPOsuna/TIA/commit/8df129e4b529f65fadb5652dd90206a463c51c0e))
+* **ml:** worker Python JSON para inferencia persistente ([7455bb0](https://github.com/HectorPOsuna/TIA/commit/7455bb0018fbd13c3f31ff4fa6f284a1503582aa))
+
+### Corregido
+
+* **inference:** features de inferencia sin target y versionado por hash del modelo ([0fd2f76](https://github.com/HectorPOsuna/TIA/commit/0fd2f7670692d14ddbe28f6377189117cbd12fa4))
+
+### Mantenimiento
+
+* **db:** añade tabla inferences al esquema inicial ([830f553](https://github.com/HectorPOsuna/TIA/commit/830f5534616241b04e362996fc70e23dd3086395))
+* **frontend:** sincroniza pnpm-lock con three, fiber y drei ([92b20ad](https://github.com/HectorPOsuna/TIA/commit/92b20ad357e82eb1d7fac9ecc6e712622c9859be))
+* **ml:** permitir python -m ml.worker ([21b298f](https://github.com/HectorPOsuna/TIA/commit/21b298fd7416635debbf06b1fd3f5da1d8e4e0da))
+
+### Documentación
+
+* inferencia en vivo S7 (worker, endpoints, EventBus y persistencia) ([fcfdf58](https://github.com/HectorPOsuna/TIA/commit/fcfdf58550ba19918b0f2ceaf3a618cfaf8347d8))
+
+### Pruebas
+
+* **inference:** cubre servicio, persistencia y worker Python; fix config worker ([f35b813](https://github.com/HectorPOsuna/TIA/commit/f35b8137596167eb305e22ab62dcb2a068bddb4c))
+
 ## [1.3.0](https://github.com/HectorPOsuna/TIA/compare/v1.2.0...v1.3.0) (2026-10-08)
 
 ### Añadido
