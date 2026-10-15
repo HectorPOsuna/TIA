@@ -49,3 +49,32 @@ def build_features(
     labels = features["target"].astype("float64")
     matrix = features.drop(columns=["target", "_node_id", "_ts"])
     return matrix, labels, meta
+
+
+def build_inference_features(
+    frame: pd.DataFrame,
+    lags: int = 8,
+    origin_ms: int | None = None,
+) -> pd.DataFrame:
+    if frame.empty:
+        return pd.DataFrame()
+    group = frame.sort_values("ts").reset_index(drop=True)
+    built = pd.DataFrame(index=group.index)
+    for step in range(1, lags + 1):
+        built[f"temp_lag_{step}"] = group["current_temp"].shift(step)
+    built["temp_delta"] = group["current_temp"].diff(1)
+    built["temp_ma5"] = group["current_temp"].rolling(5, min_periods=1).mean()
+    built["temp_std5"] = group["current_temp"].rolling(5, min_periods=2).std()
+    built["workload"] = group["workload"]
+    built["fan_active"] = group["fan_active"].fillna(0)
+    built["status"] = group["status"].fillna(0)
+    built["queue_length"] = group["queue_length"].fillna(0)
+    built["stack_size"] = group["stack_size"].fillna(0)
+    built["target_temp"] = group["target_temp"]
+    built["ambient_temp"] = group["ambient_temp"]
+    origin = origin_ms if origin_ms is not None else int(group["ts"].iloc[0])
+    built["rel_time_ms"] = group["ts"] - origin
+    built = built.dropna()
+    if built.empty:
+        return pd.DataFrame()
+    return built.iloc[[-1]].reset_index(drop=True)

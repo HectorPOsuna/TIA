@@ -25,6 +25,7 @@ class Worker:
         self.cfg = config.load_settings()
         self.model, self.meta = self._load_model()
         self.buffers: Dict[str, list[Dict[str, Any]]] = {}
+        self.origins: Dict[str, int] = {}
         self.max_buf = 25
 
     def _load_model(self):
@@ -40,7 +41,22 @@ class Worker:
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
             except Exception:
                 meta = {}
+        self.model_version = self._compute_version(model_path, meta)
         return m, meta
+
+    def _compute_version(self, model_path: Path, meta: Dict[str, Any]) -> str:
+        for key in ("model_version", "version", "git_sha"):
+            value = meta.get(key)
+            if isinstance(value, str) and value:
+                return value
+        try:
+            import hashlib
+
+            digest = hashlib.sha256(model_path.read_bytes()).hexdigest()
+            return f"sha256:{digest[:12]}"
+        except Exception:
+            trained = meta.get("trained_at")
+            return str(trained) if trained else "unknown"
 
     def _ensure_ordered(self, df: pd.DataFrame) -> pd.DataFrame:
         if "ts" in df.columns:
@@ -74,19 +90,22 @@ class Worker:
         if df.empty:
             return {"ok": False, "error": "no samples"}
         df = self._ensure_ordered(df)
+        origin = self.origins.get(node_id)
+        if origin is None:
+            origin = int(df["ts"].iloc[0])
+            self.origins[node_id] = origin
         try:
-            X, _, _ = features_mod.build_features(df, horizon_ms=int(horizon_ms))
+            Xf = features_mod.build_inference_features(df, origin_ms=origin)
         except Exception as e:
             return {"ok": False, "error": f"features: {e}"}
-        if X is None or X.empty:
+        if Xf is None or Xf.empty:
             return {"ok": False, "error": "empty features"}
-        Xf = X.iloc[[-1]].copy()
         try:
             pred = float(self.model.predict(Xf)[0])
         except Exception as e:
             return {"ok": False, "error": f"predict: {e}"}
         dt_ms = int((time.perf_counter() - t0) * 1000)
-        mv = (self.meta or {}).get("model_version") or (self.meta or {}).get("git_sha") or "unknown"
+        mv = (self.meta or {}).get("model_version") or getattr(self, "model_version", "unknown")
         feats_hash = None
         try:
             import hashlib
@@ -116,7 +135,7 @@ class Worker:
         elif cmd == "predict":
             res = self.handle_predict(req)
         elif cmd == "version":
-            res = {"ok": True, "version": (self.meta or {}).get("model_version"), "meta": self.meta}
+            res = {"ok": True, "version": getattr(self, "model_version", None), "meta": self.meta}
         else:
             res = {"ok": False, "error": f"unknown cmd: {cmd}"}
         if rid is not None:

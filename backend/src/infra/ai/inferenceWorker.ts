@@ -135,13 +135,14 @@ export class InferenceWorker {
     }
     const id = this.nextId++;
     const payload = JSON.stringify({ id, cmd: 'version' });
+    const timeout = Math.max(this.opts.timeoutMs, 10_000);
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         resolve({});
-      }, this.opts.timeoutMs);
+      }, timeout);
       this.pending.set(id, {
-        resolve: (value) => resolve({ version: value.modelVersion, meta: value.meta }),
+        resolve: (value) => resolve({ version: value.version ?? value.modelVersion, meta: value.meta }),
         reject: () => resolve({}),
         timer,
       });
