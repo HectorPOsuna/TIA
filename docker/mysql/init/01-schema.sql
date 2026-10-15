@@ -24,6 +24,20 @@ CREATE TABLE IF NOT EXISTS events (
   INDEX idx_events_ts (ts DESC)
 );
 
+CREATE TABLE IF NOT EXISTS inferences (
+  ts BIGINT NOT NULL,
+  node_id VARCHAR(64) NOT NULL,
+  predicted_temp DOUBLE NOT NULL,
+  actual_temp DOUBLE NULL,
+  horizon_ms INT NOT NULL,
+  model_version VARCHAR(64) NULL,
+  latency_ms INT NULL,
+  features_hash VARCHAR(64) NULL,
+  meta JSON NULL,
+  INDEX idx_inferences_node_ts (node_id, ts DESC),
+  INDEX idx_inferences_ts (ts DESC)
+);
+
 CREATE OR REPLACE VIEW telemetry_minute AS
 SELECT
   DATE_FORMAT(FROM_UNIXTIME(ts / 1000), '%Y-%m-%d %H:%i') AS minute,
