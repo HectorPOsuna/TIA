@@ -3,6 +3,7 @@ import { STATUS_CODE } from '../domain/types.js';
 import type { EventBus } from '../engine/eventBus.js';
 import type {
   AlertPayload,
+  InferencePayload,
   RuleTriggeredPayload,
   SimEventMap,
   TaskEventPayload,
@@ -21,6 +22,7 @@ export interface TimeSeriesSinkOptions {
 export class TimeSeriesSink {
   private readonly telemetryRows: DatabaseRow[] = [];
   private readonly eventRows: DatabaseRow[] = [];
+  private readonly inferenceRows: DatabaseRow[] = [];
   private closed = false;
   private flushing = false;
   private timer: NodeJS.Timeout | null;
@@ -35,7 +37,7 @@ export class TimeSeriesSink {
   }
 
   get pendingRows(): number {
-    return this.telemetryRows.length + this.eventRows.length;
+    return this.telemetryRows.length + this.eventRows.length + this.inferenceRows.length;
   }
 
   async close(): Promise<void> {
@@ -81,6 +83,32 @@ export class TimeSeriesSink {
     bus.on('alert', (payload: AlertPayload) => {
       this.pushEvent(payload.at, payload.nodeId, 'alert', 'alert', payload.level, payload.message, null);
     });
+    bus.on('inference:completed', (payload: InferencePayload) => {
+      this.pushInference(payload);
+    });
+  }
+
+  private pushInference(payload: InferencePayload): void {
+    this.inferenceRows.push({
+      ts: payload.at,
+      node_id: payload.nodeId,
+      predicted_temp: payload.predictedTemp,
+      actual_temp: Number.isFinite(payload.actualTemp) ? payload.actualTemp : null,
+      horizon_ms: payload.horizonMs,
+      model_version: payload.modelVersion,
+      latency_ms: payload.latencyMs,
+      features_hash: payload.featuresHash ?? null,
+      meta: JSON.stringify({ error: payload.predictedTemp - payload.actualTemp }),
+    });
+    this.pushEvent(
+      payload.at,
+      payload.nodeId,
+      'inference',
+      'inference',
+      payload.modelVersion,
+      `Inferencia ${payload.predictedTemp.toFixed(2)}°C (real ${payload.actualTemp.toFixed(2)}°C, ${payload.latencyMs}ms)`,
+      { horizonMs: payload.horizonMs, predictedTemp: payload.predictedTemp, latencyMs: payload.latencyMs },
+    );
   }
 
   private pushTelemetry(node: NodeDto): void {
@@ -113,7 +141,7 @@ export class TimeSeriesSink {
     ts: number,
     nodeId: string | undefined,
     kind: string,
-    type: 'rule' | 'task' | 'alert',
+    type: 'rule' | 'task' | 'alert' | 'inference',
     label: string,
     message: string,
     meta: Record<string, unknown> | null,
@@ -150,13 +178,17 @@ export class TimeSeriesSink {
     }
     const telemetry = this.telemetryRows.splice(0, this.telemetryRows.length);
     const events = this.eventRows.splice(0, this.eventRows.length);
-    if (telemetry.length === 0 && events.length === 0) {
+    const inferences = this.inferenceRows.splice(0, this.inferenceRows.length);
+    if (telemetry.length === 0 && events.length === 0 && inferences.length === 0) {
       return;
     }
     this.flushing = true;
     try {
       if (telemetry.length > 0) {
         await this.options.database.insertMany('telemetry', telemetry);
+      }
+      if (inferences.length > 0) {
+        await this.options.database.insertMany('inferences', inferences);
       }
       if (events.length > 0) {
         await this.options.database.insertMany('events', events);

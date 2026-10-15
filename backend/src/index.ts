@@ -10,6 +10,8 @@ import type { SimEventMap } from './engine/events.js';
 import { EventBus } from './engine/eventBus.js';
 import { SimulationEngine } from './engine/simulationEngine.js';
 import { buildHttpServer } from './infra/httpServer.js';
+import { InferenceService } from './infra/ai/inferenceService.js';
+import { InferenceWorker } from './infra/ai/inferenceWorker.js';
 import { Database } from './infra/database.js';
 import { LogStore } from './infra/logger.js';
 import { MemoryPersistence } from './infra/persistence.js';
@@ -65,7 +67,32 @@ if (database !== null) {
 }
 const engine = new SimulationEngine({ system, rules, logs, bus }, config.TICK_MS, config.LOG_TELEMETRY_EVERY);
 
-const ctx: AppContext = { system, rules, logs, engine, bus };
+let inference: InferenceService | null = null;
+const inferenceWorker = config.INFERENCE_ENABLED
+  ? new InferenceWorker({
+      python: config.INFERENCE_PYTHON,
+      timeoutMs: config.INFERENCE_TIMEOUT_MS,
+      onError: (message) => logs.add('warning', 'system', message),
+    })
+  : null;
+if (inferenceWorker !== null) {
+  inference = new InferenceService(inferenceWorker, bus, {
+    horizonMs: config.INFERENCE_HORIZON_MS,
+    throttleMs: config.INFERENCE_THROTTLE_MS,
+    minSamples: config.INFERENCE_MIN_SAMPLES,
+    window: config.INFERENCE_WINDOW,
+    onWarn: (message) => logs.add('warning', 'system', message),
+  });
+  inference.start();
+  inferenceWorker.start();
+  void inferenceWorker.version().then((info) => {
+    if (info.version !== undefined) {
+      logs.add('info', 'system', `Modelo de IA cargado (versión ${info.version})`);
+    }
+  });
+}
+
+const ctx: AppContext = { system, rules, logs, engine, bus, inference: inference ?? undefined };
 
 const app = buildHttpServer(ctx, config.CORS_ORIGIN, config.LOG_HTTP);
 const httpServer = createServer(app);
@@ -93,6 +120,7 @@ httpServer.listen(config.PORT, () => {
 
 const shutdown = async (signal: string): Promise<void> => {
   engine.stop();
+  inference?.stop();
   if (sink !== null) {
     await sink.close();
   }

@@ -35,6 +35,13 @@ const EnvSchema = z.object({
   DB_FLUSH_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
   DB_MAX_BUFFER: z.coerce.number().int().min(1).max(100_000).default(1000),
   DB_SCHEMA_FILE: z.string().optional().default('../docker/mysql/init/01-schema.sql'),
+  INFERENCE_ENABLED: boolFromEnv(true),
+  INFERENCE_HORIZON_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
+  INFERENCE_THROTTLE_MS: z.coerce.number().int().min(100).max(60_000).default(500),
+  INFERENCE_TIMEOUT_MS: z.coerce.number().int().min(50).max(60_000).default(2000),
+  INFERENCE_MIN_SAMPLES: z.coerce.number().int().min(2).max(100).default(9),
+  INFERENCE_WINDOW: z.coerce.number().int().min(5).max(500).default(25),
+  INFERENCE_PYTHON: z.string().optional().default('ml/.venv/Scripts/python.exe'),
 });
 
 export type Config = z.infer<typeof EnvSchema>;

@@ -1,5 +1,6 @@
 import cors from 'cors';
 import express from 'express';
+import { inferenceRouter } from '../api/inference.routes.js';
 import { logsRouter } from '../api/logs.routes.js';
 import { nodesRouter } from '../api/nodes.routes.js';
 import { rulesRouter } from '../api/rules.routes.js';
@@ -44,6 +45,7 @@ export function buildHttpServer(ctx: AppContext, corsOrigin: string, httpLogging
   app.use('/api/logs', logsRouter(ctx));
   app.use('/api/sim', simulateRouter(ctx));
   app.use('/api/tasks', tasksRouter(ctx));
+  app.use('/api/inference', inferenceRouter(ctx));
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'recurso no encontrado' });

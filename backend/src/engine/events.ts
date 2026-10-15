@@ -27,6 +27,17 @@ export interface AlertPayload {
   at: number;
 }
 
+export interface InferencePayload {
+  nodeId: string;
+  predictedTemp: number;
+  actualTemp: number;
+  horizonMs: number;
+  modelVersion: string;
+  latencyMs: number;
+  featuresHash?: string;
+  at: number;
+}
+
 export interface SimEventMap {
   'state:update': SystemSnapshotDto;
   'node:updated': NodeUpdatedPayload;
@@ -35,4 +46,5 @@ export interface SimEventMap {
   'task:completed': TaskEventPayload;
   'task:pending': TaskPendingPayload;
   alert: AlertPayload;
+  'inference:completed': InferencePayload;
 }
