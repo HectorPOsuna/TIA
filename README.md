@@ -22,9 +22,27 @@ Ver [backend/README.md](backend/README.md) para API REST, eventos WebSocket, mod
 cd backend
 pnpm.cmd install
 pnpm.cmd dev        # http://localhost:3000
-pnpm.cmd run test   # 57 tests vitest
+pnpm.cmd run test   # 61 tests vitest
 pnpm.cmd run build
 ```
+
+### Inferencia IA en vivo (S7)
+
+Con el modelo entrenado en `ml/out/`, el backend sirve inferencias en tiempo real **en el mismo
+proceso Node**: al arrancar lanza un worker Python persistente (`python -m ml.worker`, JSON por
+stdin/stdout) y, en cada `state:update`, mantiene una ventana deslizante por nodo y pide la
+predicción a 15 s. La auto-inferencia está siempre activa y cada resultado se emite por el
+`EventBus` (`inference:completed`), se guarda en `inferences` y deja una fila `kind=inference` en
+`events`. El modelo se versiona por `sha256` del `model.joblib` y se registra en el log al arrancar.
+
+```bash
+curl -X POST localhost:3000/api/inference/predict -H "Content-Type: application/json" \
+  -d "{\"nodeId\":\"node-1\"}"          # o {"nodes":["node-1","node-2"]}
+curl localhost:3000/api/inference/version
+```
+
+Se configura con `INFERENCE_*` en `backend/.env` (`INFERENCE_ENABLED`, `INFERENCE_HORIZON_MS`,
+`INFERENCE_THROTTLE_MS`, `INFERENCE_PYTHON`). No se muestra en el frontend.
 
 ## Base de datos (BD time-series)
 
@@ -52,7 +70,7 @@ cd ml
 .\.venv\Scripts\python -m ml.train            # entrena y genera ml/out/ (sin tocar la BD)
 .\.venv\Scripts\python -m ml.train --write-db # además inserta las alertas en la tabla events
 .\.venv\Scripts\python -m ml.predict --node node-1
-.\.venv\Scripts\python -m pytest tests        # 10 tests
+.\.venv\Scripts\python -m pytest tests        # 18 tests
 ```
 
 Resultado de referencia (horizonte 15 s, muestra de 4 nodos, 1712 lecturas): MAE 0.078 °C,

@@ -263,6 +263,13 @@ curl -X POST http://localhost:3000/api/rules -H "Content-Type: application/json"
 | POST | `/tick` | `{ok:true, tickMs}` o 409 si está corriendo |
 | POST | `/reset` | `{ok:true}` |
 
+### `/api/inference`
+
+| Método | Ruta | Respuesta |
+|---|---|---|
+| POST | `/predict` | `{ok:true, nodeId, predictedTemp, actualTemp, horizonMs, modelVersion, latencyMs, featuresHash, at}`; con `{nodes:[...]}` devuelve `{count, results}` con el estado por nodo; 404 si el nodo no existe, 409 si la ventana es insuficiente, 502 si la inferencia falla, 503 si la inferencia está deshabilitada |
+| GET | `/version` | `{version, meta}` del modelo cargado (la `version` es `sha256` del `model.joblib`) |
+
 ## Eventos Socket.IO
 
 El servidor sobrescribe en `infra/sockets.ts`: cada evento del bus se reenvía como paquete `{type, ts, payload}` con nombre igual al evento. El cliente se conecta con `io()` (proxy de Vite) y puede pedir suscripción a un nodo con `node:subscribe` / `node:unsubscribe`.
@@ -276,6 +283,7 @@ El servidor sobrescribe en `infra/sockets.ts`: cada evento del bus se reenvía c
 | `task:completed` | `{nodeId, task}` | Cuando una tarea termina en el motor |
 | `task:pending` | `{task}` | Al entrar una tarea al pool global (API o regla `any`/`all`) |
 | `alert` | `{level:'critical', message, nodeId?, at}` | Acción `send_alert` |
+| `inference:completed` | `{nodeId, predictedTemp, actualTemp, horizonMs, modelVersion, latencyMs, featuresHash?, at}` | Tras cada inferencia automática o por API |
 
 Los eventos emitidos salen como `io.emit(...)` (broadcast a todos los conectados); las suscripciones por nodo usan salas `node:<id>` (los eventos actuales ignoran la sala y se emiten globalmente).
 
@@ -447,6 +455,35 @@ se degrada (MAE 0.301 °C) y el modelo aporta (MAE 0.078 °C, ~74 % mejor). Con
 σ=1.0 demuestra el flujo completo. Los artefactos (`ml/out/`, `ml/data/`) están
 gitignoreados y se regeneran con `ml.train`; los tests pytest (`ml/tests/`, 10) importan
 `ml.*` vía `conftest.py` que añade la raíz del repo a `sys.path`.
+
+## Inferencia en vivo (S7, `infra/ai/`)
+
+El modelo entrenado se sirve desde el propio backend Node, sin proceso HTTP aparte: al arrancar
+se lanza un **worker Python persistente** y el servicio de inferencia lo consume por JSON
+línea a línea (stdin/stdout).
+
+- `infra/ai/inferenceWorker.ts`: `spawn` de `python -m ml.worker` (resuelve `INFERENCE_PYTHON`
+  respecto a la raíz del repo), correlación petición/respuesta por `id`, `timeout` por petición
+  (`INFERENCE_TIMEOUT_MS`, con margen ampliado para `version()` por el cold start), `restart`
+  perezoso si el proceso cae, y `rejectAll` de las peticiones en vuelo al salir.
+- `ml/worker.py`: carga `model.joblib` + `model.json`, versiona el modelo por `sha256` del
+  `.joblib` (o `model_version`/`git_sha` del meta) y expone `ping`/`version`/`predict`. Para cada
+  `predict` reconstruye las features con `build_inference_features` (mismo esquema que el
+  entrenamiento pero **sin target**, porque las filas más recientes no tienen futuro) y fija
+  `rel_time_ms` contra un origen por nodo para mantener la paridad con el dataset de entrenamiento.
+- `infra/ai/inferenceService.ts`: en cada `state:update` guarda una muestra por nodo en una
+  ventana deslizante (`INFERENCE_WINDOW`) y, cuando hay `INFERENCE_MIN_SAMPLES`, lanza la
+  inferencia (auto-inferencia **siempre activa**, con `INFERENCE_THROTTLE_MS` por nodo y una sola
+  inferencia en vuelo por nodo). El resultado se emite como `inference:completed` en el `EventBus`.
+
+Orden de arranque en `index.ts`: `inference.start()` (suscripción) → `inferenceWorker.start()`
+(spawn) → log de la versión del modelo. En el `shutdown` se llama a `inference.stop()` antes de
+cerrar la BD, para matar el worker.
+
+La persistencia la hace `TimeSeriesSink`: además de `telemetry`/`events`, al recibir
+`inference:completed` inserta en `inferences` (ts, node_id, predicted_temp, actual_temp,
+horizon_ms, model_version, latency_ms, features_hash, meta con el error `predicted - actual`) y
+añade una fila `kind=inference type=inference` a `events`.
 
 ## Arquitectura del frontend (`frontend/`)
 

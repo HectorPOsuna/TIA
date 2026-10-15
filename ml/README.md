@@ -28,7 +28,8 @@ cd ml
 .\.venv\Scripts\python -m ml.train --write-db # además inserta las alertas en events
 .\.venv\Scripts\python -m ml.train --no-ollama
 .\.venv\Scripts\python -m ml.predict --node node-1
-.\.venv\Scripts\python -m pytest tests        # 10 tests
+.\.venv\Scripts\python -m ml.worker             # worker de inferencia en vivo (stdin/stdout JSON)
+.\.venv\Scripts\python -m pytest tests        # 18 tests
 ```
 
 `train` genera en `ml/out/`:
@@ -50,6 +51,16 @@ También vuelca un snapshot de la telemetría usada en `ml/data/telemetry.csv`.
 6. **Anomalías** (`anomaly.py`): umbral `media + N·σ` de los residuos absolutos **de test** (σ por defecto 3.0); cada fila sobre el umbral genera una alerta.
 7. **Explicación** (`ollama.py`): las N primeras alertas (`ML_TOP_K_ANOMALIES`) se explican con Ollama pidiendo JSON (`diagnostico`, `accion`), con la ventana de temperaturas recientes en el prompt. El fallo de Ollama no aborta el pipeline.
 8. `--write-db`: las alertas se insertan en `events` (kind=`alert`, type=`ai`) con `meta` serializado como JSON.
+
+## Inferencia en vivo (`worker.py`, S7)
+
+`ml.worker` es el puente entre el backend Node y el modelo: un proceso Python persistente que
+habla JSON por stdin/stdout (una petición por línea). Carga `model.joblib`/`model.json` al
+arrancar, versiona el modelo por `sha256` del `.joblib` y responde `ping`/`version`/`predict`.
+Para `predict` reconstruye las features con `build_inference_features` (mismo esquema que el
+entrenamiento, **sin target** porque las filas recientes no tienen futuro) y ancla `rel_time_ms` a
+un origen por nodo. El backend lo lanza solo (`INFERENCE_PYTHON` → `ml/.venv/Scripts/python.exe`);
+no requiere puerto.
 
 ## Notas y resultados
 
