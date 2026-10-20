@@ -11,19 +11,19 @@ export function recommend(predictedTemp, targetTemp) {
     return {
       tone: 'badge--ok',
       label: 'estable',
-      detail: `Se mantiene en objetivo (±1 °C) a ${delta >= 0 ? '+' : ''}${delta.toFixed(1)} °C.`,
+      detail: `Dentro de ±1 °C del objetivo (${delta >= 0 ? '+' : ''}${delta.toFixed(1)} °C).`,
     }
   }
   if (delta > 1) {
     return {
       tone: 'badge--warn',
       label: 'enfriar',
-      detail: `Subida prevista de ${delta.toFixed(1)} °C sobre el objetivo; valora ventilador o reducir carga.`,
+      detail: `Se prevé ${delta.toFixed(1)} °C sobre el objetivo; valora ventilador o reducir carga.`,
     }
   }
   return {
     tone: 'badge--info',
     label: 'subir carga',
-    detail: `Bajará ${Math.abs(delta).toFixed(1)} °C por debajo del objetivo; puedes aumentar carga.`,
+    detail: `Se prevé ${Math.abs(delta).toFixed(1)} °C bajo el objetivo; puedes aumentar carga.`,
   }
 }

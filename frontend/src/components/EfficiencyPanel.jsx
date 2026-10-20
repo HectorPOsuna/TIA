@@ -10,11 +10,11 @@ function averageTemp(snapshot) {
 
 export function EfficiencyPanel({ snapshot, samples, inference }) {
   const series = useMemo(
-    () => samples.slice(-120).map((sample) => averageTemp(sample.snapshot)),
+    () => samples.slice(-120).map((sample) => averageTemp(sample)),
     [samples],
   )
   const poolSeries = useMemo(
-    () => samples.slice(-120).map((sample) => sample.snapshot.pendingQueue.size),
+    () => samples.slice(-120).map((sample) => sample.pendingQueue.size),
     [samples],
   )
 
@@ -31,13 +31,11 @@ export function EfficiencyPanel({ snapshot, samples, inference }) {
   const meanLoad = nodes.reduce((acc, node) => acc + node.workload, 0) / nodes.length
   const inBandPct = Math.round((100 * inBand) / nodes.length)
 
-  const validSamples = samples.filter(
-    (sample) => sample.snapshot !== undefined && sample.snapshot !== null,
-  )
+  const validSamples = samples.filter((sample) => sample !== undefined && sample !== null)
   let sessionInBand = null
   if (validSamples.length > 0) {
     const inside = validSamples.filter(
-      (sample) => Math.abs(averageTemp(sample.snapshot) - sample.snapshot.targetTemp) <= BAND,
+      (sample) => Math.abs(averageTemp(sample) - sample.targetTemp) <= BAND,
     ).length
     sessionInBand = Math.round((100 * inside) / validSamples.length)
   }

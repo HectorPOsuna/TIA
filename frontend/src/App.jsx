@@ -53,7 +53,7 @@ export default function App() {
     if (!selectedId) return null
     const values = []
     for (const sample of history.samples) {
-      const snap = sample.snapshot
+      const snap = sample
       const node =
         snap.general.id === selectedId
           ? snap.general
@@ -135,7 +135,7 @@ export default function App() {
               node={selectedNode}
               series={series}
               api={api}
-              inference={selectedId ? inference.latest[selectedId] : undefined}
+              inference={!isReplay && selectedId ? inference.latest[selectedId] : undefined}
             />
           </CollapsiblePanel>
 
@@ -157,7 +157,7 @@ export default function App() {
               meta={inference.meta}
               enabled={inference.enabled}
               stats={inference.stats}
-              nodes={effective ? [effective.general, ...effective.workers] : []}
+              nodes={live ? [live.general, ...live.workers] : []}
             />
           </CollapsiblePanel>
 

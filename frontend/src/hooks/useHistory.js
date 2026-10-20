@@ -30,7 +30,7 @@ export function useHistory() {
   }, [samples])
 
   const isReplay = replayIndex >= 0 && samples.length > 0
-  const replaySnapshot = isReplay ? (samples[replayIndex]?.snapshot ?? null) : null
+  const replaySnapshot = isReplay ? (samples[replayIndex] ?? null) : null
 
   const goTo = (i) => {
     if (i < 0) {
