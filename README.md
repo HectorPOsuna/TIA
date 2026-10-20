@@ -81,10 +81,12 @@ RMSE 0.087 °C frente a una baseline de persistencia con MAE 0.301 °C (mejora �
 Dashboard de control con **vista cenital 3D** (Three.js + React Three Fiber) sobre una rejilla
 automática: cada nodo es una cabina extruida cuyo color y altura reflejan su temperatura respecto
 al objetivo; al hacer clic abre el panel de controles en la barra lateral (objetivo ±5°, ventilador,
-encolar tarea, tendencia, cola/pila/fallos). La barra lateral agrupa, en secciones colapsables, el
-nodo seleccionado, la cola global (pool), las reglas reactivas y las alertas. Los últimos **600
-estados** de la sesión se guardan en el navegador y permiten **replay** del mapa térmico con
-línea de tiempo y reproducción automática.
+encolar tarea, tendencia, cola y pila LIFO). La barra lateral agrupa, en secciones colapsables, el
+nodo seleccionado, el **modelo IA** (versión, horizonte, predicción por nodo a 15 s y recomendación
+estable/enfriar/subir carga), la **eficiencia** (nodos en banda ±2 °C, desvío medio, sesión en banda,
+ventiladores, carga y pool, con sparklines de la sesión), la cola global (pool), las reglas reactivas
+(con sus últimos disparos) y las alertas. Los últimos **600 estados** de la sesión se guardan en el
+navegador y permiten **replay** del mapa térmico con línea de tiempo y reproducción automática.
 
 ```bash
 cd frontend

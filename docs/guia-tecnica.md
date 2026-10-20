@@ -487,13 +487,18 @@ añade una fila `kind=inference type=inference` a `events`.
 
 ## Arquitectura del frontend (`frontend/`)
 
-React 19 (JSX sin TypeScript) + Vite; dos hooks consumen el backend por el proxy de Vite
+React 19 (JSX sin TypeScript) + Vite; los hooks consumen el backend por el proxy de Vite
 (`/api` y `/socket.io` con `ws`):
 
 - `hooks/useSimulation.js`: socket `io()` singleton; `state:update` → snapshot, `alert` → alertas
   (máx 20); state inicial vía `GET /api/system` y `GET /api/sim/status`; api REST
   (`pause/resume/reset/patchSystem/patchNode/enqueue/submitTask/clearPool`).
-- `hooks/useRules.js`: `GET /api/rules` + refresh en `rule:triggered`; api `toggle`/`remove`.
+- `hooks/useRules.js`: `GET /api/rules` + refresh en `rule:triggered`; api `toggle`/`remove`;
+  conserva los últimos disparos (`triggered`) que muestra `RulesPanel`.
+- `hooks/useInference.js`: socket `inference:completed` con batching de 250 ms → última predicción
+  por nodo y contador de sesión; `GET /api/inference/version` al montar y al reconectar (si
+  responde 503 marca la inferencia como deshabilitada). `lib/recommendation.js` deriva la
+  recomendación (estable / enfriar / subir carga) comparando la predicción con el objetivo del nodo.
 
 Representación 3D (Three.js + `@react-three/fiber` + `@react-three/drei`) en `three/`: la escena
 `Scene.jsx` se carga con `React.lazy` para no inflar el chunk inicial; `Floor` (rejilla de suelo),
@@ -513,11 +518,15 @@ Detalles de implementación:
 
 UI en `components/`: `Header` (objetivo global, pausa/resumen, reset), `SummaryBar` (resumen por
 estado), barra lateral con secciones colapsables (`CollapsiblePanel`): `NodeDetailPanel` (objetivo
-±5°, ventilador, encolar tarea, métricas, cola, `Sparkline` SVG con línea de target),
-`PoolPanel` (pool global + `TaskForm`), `RulesPanel`, `AlertsPanel` y `ReplayControls`.
+±5°, ventilador, encolar tarea, métricas, predicción del modelo y su recomendación, cola, pila LIFO
+y `Sparkline` SVG con línea de target y marcador de predicción), `ModelPanel` (versión y horizonte
+del modelo, predicción/real/latencia por nodo y recomendación), `EfficiencyPanel` (banda ±2 °C,
+desvío medio, sesión en banda, ventiladores, carga, pool y sparklines de temperatura media y pool),
+`PoolPanel` (pool global + `TaskForm`), `RulesPanel` (reglas + últimos disparos), `AlertsPanel` y
+`ReplayControls`.
 
 **Historial y replay**: `hooks/useHistory.js` acumula los últimos `MAX_SAMPLES=600` snapshots de
-`state:update` (mismo socket), guarda también un índice de replay (−1 = vivo). En modo replay,
+`state:update` (socket propio), guarda también un índice de replay (−1 = vivo). En modo replay,
 `App.jsx` usa `replaySnapshot` como fuente de verdad (efectiva) para la escena y los paneles;
 `ReplayControls` permite barrido manual, reproducción automática (intervalo 600 ms) y volver a
 vivo. Es 100 % client-side: no requiere backend ni persistencia adicional.

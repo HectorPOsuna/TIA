@@ -60,6 +60,8 @@ Deberías ver el panel **WAItt · Simulador de temperatura** con una etiqueta ve
 
 ## La interfaz
 
+El panel tiene tres zonas: la **cabecera**, la **vista cenital 3D** y la **barra lateral** con secciones colapsables.
+
 ### Cabecera
 
 - **WAItt · Simulador de temperatura**: título del panel.
@@ -73,21 +75,33 @@ Deberías ver el panel **WAItt · Simulador de temperatura** con una etiqueta ve
 
 Una fila muestra: número de **nodos** totales, cuántos están **activos**, **inactivos**, **en error**, la **temperatura media**, y una caja "**Objetivo global (°C)**" con su botón **Aplicar**.
 
+### Vista cenital 3D
+
+Cada nodo (el **Servidor General** y los trabajadores `Servidor 1`, `Servidor 2`, …) es una cabina extruida: su color y altura reflejan la temperatura respecto al objetivo. Un nodo inactivo se ve gris y semitransparente; uno en error, rojo con pulso; si el ventilador está encendido, muestra un disco cian giratorio. Al hacer clic en una cabina se abre su panel de control en la barra lateral.
+
+Bajo la escena, los **controles de replay** permiten revisar los últimos 600 estados de la sesión: barrido manual, reproducción automática y vuelta a "en vivo".
+
+### Panel del nodo seleccionado
+
+Muestra el nombre y estado del nodo, la temperatura actual y su tendencia (sparkline con línea de objetivo y un marcador con la predicción), objetivo/ambiente/carga, cola de tareas, pila LIFO de eventos y las acciones **−5°C** / **+5°C**, **Ventilador on/off** y el formulario **Encolar** (prioridad, demanda y duración) para la cola local.
+
+### Modelo IA
+
+La sección **Modelo IA** muestra la versión del modelo (`sha256:…`), su horizonte de predicción, cuántas inferencias se han recibido en la sesión y, por nodo, la temperatura prevista, la real, la latencia y una **recomendación**:
+
+- **estable**: la predicción se mantiene a ±1 °C del objetivo.
+- **enfriar**: se prevé más de 1 °C por encima; conviene encender el ventilador o reducir carga.
+- **subir carga**: se prevé más de 1 °C por debajo; hay margen para encolar más trabajo.
+
+Si el backend arranca con `INFERENCE_ENABLED=false` o sin modelo entrenado, la sección lo indica y el resto del panel sigue funcionando.
+
+### Eficiencia
+
+Indicadores de la sesión calculados en el navegador: nodos **en banda** (a ±2 °C del objetivo), **desvío medio**, **% de la sesión en banda**, ventiladores encendidos, **carga media**, tareas en el pool y dos sparklines (temperatura media y tareas pendientes en el pool).
+
 ### Cola de prioridad global
 
 La sección **Cola de prioridad global** muestra el pool central de tareas pendientes (`X/Y`, con `Y = PENDING_POOL_CAPACITY`). Elige **prioridad** (1–5, 5 = la más urgente), **demanda de cómputo** (1–5) y **duración** (1–10 s) y pulsa **Encolar al pool**. Cada tick, el dispatcher asigna la tarea de mayor prioridad al **nodo activo libre más frío**; si no hay ningún nodo elegible, la tarea espera en el pool. **Vaciar pool** elimina las pendientes.
-
-### Tarjeta de cada nodo
-
-Cada nodo (el **Servidor General** y los trabajadores `Servidor 1`, `Servidor 2`, …) se muestra en una tarjeta con:
-
-- **Nombre** y estado: `active` (activo), `inactive` (inactivo) o `error`.
-- **Temperatura actual** en grados; junto al número aparece un icono de ventilador (💨) si el ventilador está encendido.
-- **Objetivo**, **ambiente** y **carga de trabajo** actuales.
-- **Cola de tareas**: tamaño usado frente a capacidad (`X/Y`), la tarea en curso con su tipo, prioridad y duración (por ejemplo `processing: cooldown (p4 · 8s)`), y la lista de tareas esperando.
-- **Eventos de la pila**: el número de eventos registrados recientemente en el nodo.
-- Botones de acción: **−5°C** / **+5°C** (ajustan el objetivo de ese nodo) y **Ventilador on/off**.
-- Formulario **Encolar** (prioridad, demanda y duración) que añade una tarea a la cola local del nodo.
 
 ### Reglas reactivas
 
@@ -97,7 +111,7 @@ Desde la interfaz puedes:
 - **Activar/Desactivar** una regla (se aplica en vivo, sin reiniciar).
 - **Eliminar** una regla con el botón **✕**.
 
-La lista de **Disparos recientes** muestra las últimas reglas que se activaron y sobre qué nodos.
+La lista de **Últimos disparos** muestra las últimas reglas que se activaron y sobre qué nodos.
 
 ### Alertas
 
@@ -105,7 +119,7 @@ La sección **Alertas** muestra los últimos avisos importantes (hasta 20). Cada
 
 ## Cómo modificar la temperatura
 
-- **De un nodo en concreto**: usa los botones **−5°C** / **+5°C** de su tarjeta. El nodo se acercará gradualmente al nuevo objetivo (no salta al instante).
+- **De un nodo en concreto**: selecciónalo en la vista 3D y usa los botones **−5°C** / **+5°C** de su panel. El nodo se acercará gradualmente al nuevo objetivo (no salta al instante).
 - **De todo el sistema**: escribe un valor en "Objetivo global (°C)" y pulsa **Aplicar**. Esto actualiza el objetivo de todos los nodos a la vez.
 - La **temperatura ambiente** no se modifica desde la interfaz; se configura en el backend (ver `AMBIENT_TEMP` en la guía técnica).
 
@@ -113,7 +127,7 @@ La sección **Alertas** muestra los últimos avisos importantes (hasta 20). Cada
 
 Hay dos vías para encolar tareas:
 
-1. **Cola local del nodo** (botón **Encolar** de su tarjeta): la tarea espera turno en la
+1. **Cola local del nodo** (botón **Encolar** de su panel): la tarea espera turno en la
    cola de prioridad de ese nodo concreto.
 2. **Cola de prioridad global** (sección dedicada, o la API `POST /api/tasks`): la tarea
    entra al pool central y el **dispatcher** la asigna en cada tick al nodo activo libre más
@@ -133,7 +147,7 @@ La cola tiene tres estados de tarea:
 | Estado | Significado |
 |---|---|
 | `pending` | En la cola, esperando turno |
-| `processing` | En curso: se muestra como "procesando: cooldown (p4 · 8s)" en la tarjeta |
+| `processing` | En curso: se muestra como "procesando: cooldown (p4 · 8s)" en el panel del nodo |
 | `completed` | Terminada; sale de la cola y queda reflejada en el log de eventos |
 
 Cada nodo solo procesa **una tarea a la vez**; el resto espera en la cola. Si la cola (o el pool global) está llena, la asignación se rechaza.
