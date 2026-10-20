@@ -44,14 +44,16 @@ export function ModelPanel({ latest, version, meta, enabled, stats, nodes = [] }
               ? `${entry.actualTemp.toFixed(2)}°`
               : '—'
             return (
-              <li key={entry.nodeId} className="list__item model-row">
-                <div style={{ minWidth: 0 }}>
+              <li key={entry.nodeId} className="model-row">
+                <div className="model-row__head">
                   <strong>{entry.nodeId}</strong>
-                  <div className="hint mono">
-                    {entry.predictedTemp.toFixed(2)}° prevista · real {actual} · {entry.latencyMs} ms
-                  </div>
+                  <span className={`badge ${rec.tone}`}>{rec.label}</span>
                 </div>
-                <span className={`badge ${rec.tone}`}>{rec.label}</span>
+                <div className="model-row__data">
+                  <span className="model-row__pred">{entry.predictedTemp.toFixed(2)}° prevista</span>
+                  <span>real {actual}</span>
+                  <span>{entry.latencyMs} ms</span>
+                </div>
               </li>
             )
           })}

@@ -260,8 +260,35 @@
 }
 
 .model-row {
-  justify-content: space-between;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 6px;
+  border-radius: 6px;
+}
+
+.model-row:hover {
+  background: var(--bg-elev);
+}
+
+.model-row__head {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.model-row__data {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.model-row__pred {
+  color: #c084fc;
 }
 
 /* ---------- Alert item ---------- */

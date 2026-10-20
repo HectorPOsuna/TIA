@@ -254,6 +254,10 @@ h3 {
   scrollbar-color: var(--border-strong) transparent;
 }
 
+.rail > .panel {
+  flex: 0 0 auto;
+}
+
 /* ---------- Panels ---------- */
 .panel {
   background: var(--bg-panel);
@@ -295,6 +299,8 @@ h3 {
 }
 
 .panel__chev {
+  font-size: 10px;
+  line-height: 1;
   transition: transform 160ms ease;
   color: var(--text-dim);
 }
