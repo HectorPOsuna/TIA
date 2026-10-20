@@ -2,10 +2,13 @@ import { lazy, Suspense, useMemo, useState } from 'react'
 import { useRules } from './hooks/useRules.js'
 import { useSimulation } from './hooks/useSimulation.js'
 import { useHistory } from './hooks/useHistory.js'
+import { useInference } from './hooks/useInference.js'
 import { Header } from './components/Header.jsx'
 import { SummaryBar } from './components/SummaryBar.jsx'
 import { CollapsiblePanel } from './components/CollapsiblePanel.jsx'
 import { NodeDetailPanel } from './components/NodeDetailPanel.jsx'
+import { ModelPanel } from './components/ModelPanel.jsx'
+import { EfficiencyPanel } from './components/EfficiencyPanel.jsx'
 import { RulesPanel } from './components/RulesPanel.jsx'
 import { PoolPanel } from './components/PoolPanel.jsx'
 import { AlertsPanel } from './components/AlertsPanel.jsx'
@@ -17,12 +20,20 @@ const Scene = lazy(() => import('./three/Scene.jsx').then((m) => ({ default: m.S
 
 export default function App() {
   const { snapshot, status, connected, alerts, api } = useSimulation()
-  const { rules, api: rulesApi } = useRules()
+  const { rules, triggered, api: rulesApi } = useRules()
   const history = useHistory()
+  const inference = useInference()
 
   const [selectedId, setSelectedId] = useState(null)
   const [target, setTarget] = useState('')
-  const [open, setOpen] = useState({ detail: true, rules: false, pool: false, alerts: true })
+  const [open, setOpen] = useState({
+    detail: true,
+    model: true,
+    efficiency: false,
+    rules: false,
+    pool: false,
+    alerts: true,
+  })
 
   const live = snapshot
   const isReplay = history.isReplay
@@ -120,7 +131,47 @@ export default function App() {
             open={open.detail}
             onToggle={() => toggle('detail')}
           >
-            <NodeDetailPanel node={selectedNode} series={series} api={api} />
+            <NodeDetailPanel
+              node={selectedNode}
+              series={series}
+              api={api}
+              inference={selectedId ? inference.latest[selectedId] : undefined}
+            />
+          </CollapsiblePanel>
+
+          <CollapsiblePanel
+            title="Modelo IA"
+            meta={
+              inference.enabled === false
+                ? 'off'
+                : inference.version
+                  ? inference.version.replace('sha256:', '')
+                  : null
+            }
+            open={open.model}
+            onToggle={() => toggle('model')}
+          >
+            <ModelPanel
+              latest={inference.latest}
+              version={inference.version}
+              meta={inference.meta}
+              enabled={inference.enabled}
+              stats={inference.stats}
+              nodes={effective ? [effective.general, ...effective.workers] : []}
+            />
+          </CollapsiblePanel>
+
+          <CollapsiblePanel
+            title="Eficiencia"
+            meta="±2 °C"
+            open={open.efficiency}
+            onToggle={() => toggle('efficiency')}
+          >
+            <EfficiencyPanel
+              snapshot={effective}
+              samples={history.samples}
+              inference={inference.latest}
+            />
           </CollapsiblePanel>
 
           <CollapsiblePanel
@@ -138,7 +189,7 @@ export default function App() {
             open={open.rules}
             onToggle={() => toggle('rules')}
           >
-            <RulesPanel rules={rules} api={rulesApi} />
+            <RulesPanel rules={rules} triggered={triggered} api={rulesApi} />
           </CollapsiblePanel>
 
           <CollapsiblePanel
