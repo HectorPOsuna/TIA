@@ -14,6 +14,7 @@ const EVENT_NAMES: readonly SocketEventName[] = [
   'task:completed',
   'task:pending',
   'alert',
+  'inference:completed',
 ];
 
 interface SocketPacket {
