@@ -239,6 +239,31 @@
   font-style: italic;
 }
 
+.detail__model {
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(192, 132, 252, 0.06);
+}
+
+.detail__model-temp {
+  font: 700 22px/1.2 var(--mono);
+  color: #c084fc;
+  margin: 4px 0 2px;
+}
+
+.detail__model-temp small {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.model-row {
+  justify-content: space-between;
+  align-items: center;
+}
+
 /* ---------- Alert item ---------- */
 .alert-item {
   display: flex;

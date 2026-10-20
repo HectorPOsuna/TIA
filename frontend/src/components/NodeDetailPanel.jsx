@@ -1,9 +1,10 @@
 import { TaskForm } from './TaskForm.jsx'
 import { Sparkline } from './Sparkline.jsx'
+import { recommend } from '../lib/recommendation.js'
 
 const STATUS_BADGE = { active: 'badge--ok', inactive: 'badge--muted', error: 'badge--danger' }
 
-export function NodeDetailPanel({ node, series, api }) {
+export function NodeDetailPanel({ node, series, api, inference }) {
   if (!node) {
     return (
       <div className="detail__none">Selecciona un nodo en el plano 3D para ver sus controles.</div>
@@ -11,6 +12,8 @@ export function NodeDetailPanel({ node, series, api }) {
   }
   const { patchNode, enqueue } = api
   const load = Math.max(0, Math.min(1, node.workload))
+  const rec = inference ? recommend(inference.predictedTemp, node.targetTemp) : null
+  const delta = inference ? inference.predictedTemp - node.currentTemp : null
 
   return (
     <div>
@@ -81,6 +84,24 @@ export function NodeDetailPanel({ node, series, api }) {
         </div>
       </div>
 
+      {rec && (
+        <div className="detail__model">
+          <div className="row">
+            <span className="hint">Modelo IA · +{(inference.horizonMs / 1000).toFixed(0)} s</span>
+            <span className={`badge ${rec.tone}`}>{rec.label}</span>
+          </div>
+          <div className="detail__model-temp">
+            {inference.predictedTemp.toFixed(2)}
+            <small> °C previstos</small>
+          </div>
+          <div className="hint">{rec.detail}</div>
+          <div className="hint mono">
+            Δ vs actual {delta >= 0 ? '+' : ''}
+            {delta.toFixed(2)} °C · latencia {inference.latencyMs} ms
+          </div>
+        </div>
+      )}
+
       {node.queue.list.length > 0 && (
         <div className="detail__queue">
           <div className="hint" style={{ marginBottom: 4 }}>
@@ -98,6 +119,34 @@ export function NodeDetailPanel({ node, series, api }) {
             {node.queue.list.length > 6 && (
               <li className="list__item dim" style={{ fontSize: 12 }}>
                 +{node.queue.list.length - 6} más
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      {node.stack.list.length > 0 && (
+        <div className="detail__queue">
+          <div className="hint" style={{ marginBottom: 4 }}>
+            Pila LIFO (última arriba)
+          </div>
+          <ul className="list">
+            {node.stack.list.slice(0, 5).map((entry, i) => (
+              <li
+                key={`${entry.ts}-${i}`}
+                className="list__item mono"
+                style={{ fontSize: 12 }}
+              >
+                <strong>{entry.kind}</strong>
+                <span className="dim">{entry.label}</span>
+                <span className="dim" style={{ marginLeft: 'auto' }}>
+                  {new Date(entry.ts).toLocaleTimeString('es')}
+                </span>
+              </li>
+            ))}
+            {node.stack.list.length > 5 && (
+              <li className="list__item dim" style={{ fontSize: 12 }}>
+                +{node.stack.list.length - 5} más
               </li>
             )}
           </ul>
@@ -122,7 +171,11 @@ export function NodeDetailPanel({ node, series, api }) {
           <div className="hint" style={{ marginBottom: 4 }}>
             Tendencia (sesión)
           </div>
-          <Sparkline values={series} target={node.targetTemp} />
+          <Sparkline
+            values={series}
+            target={node.targetTemp}
+            marker={inference ? inference.predictedTemp : null}
+          />
         </div>
       )}
     </div>
