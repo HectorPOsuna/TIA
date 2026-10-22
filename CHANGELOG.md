@@ -3,6 +3,24 @@
 Todas las notas significativas de los cambios de WAItt se documentan en este archivo.
 
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
+## [1.5.0](https://github.com/HectorPOsuna/TIA/compare/v1.4.0...v1.5.0) (2026-10-22)
+
+### Añadido
+
+* añade control IA en lazo cerrado sobre las predicciones ([85518c0](https://github.com/HectorPOsuna/TIA/commit/85518c0a5f02ffdbda2a4e394994033912aed1cc))
+* **backend:** reenvía inference:completed por Socket.IO ([283b32c](https://github.com/HectorPOsuna/TIA/commit/283b32ccd001870e2aac3f389ea641751dc1fd74))
+* **frontend:** integra los paneles S8 en el dashboard ([2b769b7](https://github.com/HectorPOsuna/TIA/commit/2b769b73360db128b55f5878672ca50d5163282d))
+* **frontend:** modelo IA, eficiencia, pilas y actividad de reglas ([c153d63](https://github.com/HectorPOsuna/TIA/commit/c153d632d45b1accb0a5b0a86237113331abc0b1))
+
+### Corregido
+
+* **frontend:** corrige el historial, el replay y las gráficas de sesión ([3647b57](https://github.com/HectorPOsuna/TIA/commit/3647b576ed2809b8fc455e65bcffc5541eb3f2a5))
+* **frontend:** corrige el layout de la barra lateral y las filas del modelo ([c108357](https://github.com/HectorPOsuna/TIA/commit/c10835764e3919264ab99ac5fa9ad70ca4b8ef47))
+
+### Documentación
+
+* documenta los paneles de modelo IA y eficiencia del S8 ([133dc77](https://github.com/HectorPOsuna/TIA/commit/133dc776bf388f85c08fdc34e0abd6cb058298fd))
+
 ## [1.4.0](https://github.com/HectorPOsuna/TIA/compare/v1.3.0...v1.4.0) (2026-10-15)
 
 ### Añadido
