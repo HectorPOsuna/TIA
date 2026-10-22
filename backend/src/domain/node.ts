@@ -1,7 +1,7 @@
 import { EventStack } from './stack.js';
 import { PriorityTaskQueue } from './tasks.js';
 import type { TaskOptions } from './tasks.js';
-import { thermalStep, COMPUTE_DEMAND_HEAT, DEFAULT_THERMAL_PARAMS, type ThermalParams } from './thermal.js';
+import { thermalStep, COOLDOWN_TASK_COOLING, COMPUTE_DEMAND_HEAT, DEFAULT_THERMAL_PARAMS, type ThermalParams } from './thermal.js';
 import type {
   NodeDto,
   NodeStatus,
@@ -40,6 +40,7 @@ export class SimNode {
   status: NodeStatus;
   currentTemp: number;
   targetTemp: number;
+  aiTargetOffset = 0;
   ambientTemp: number;
   workload: number;
   fanActive = false;
@@ -101,20 +102,26 @@ export class SimNode {
   }
 
   thermalStep(dtMs: number, params: ThermalParams = DEFAULT_THERMAL_PARAMS): void {
-    if (this.active) {
-      const computeHeat =
-        this.currentTask === null ? 0 : this.currentTask.computeDemand * COMPUTE_DEMAND_HEAT;
-      this.currentTemp = thermalStep(
-        this.currentTemp,
-        this.targetTemp,
-        this.ambientTemp,
-        this.workload + computeHeat,
-        true,
-        this.fanActive,
-        dtMs,
-        params,
-      );
+    this.currentTemp = thermalStep(
+      this.currentTemp,
+      this.targetTemp + this.aiTargetOffset,
+      this.ambientTemp,
+      this.workload,
+      this.active,
+      this.fanActive,
+      dtMs,
+      params,
+      this.currentTaskHeat(),
+    );
+  }
+
+  private currentTaskHeat(): number {
+    if (!this.active || this.currentTask === null) {
+      return 0;
     }
+    const factor =
+      this.currentTask.type === 'cooldown' ? -COOLDOWN_TASK_COOLING : COMPUTE_DEMAND_HEAT;
+    return this.currentTask.computeDemand * factor;
   }
 
   startExternalTask(task: Task): void {
@@ -230,8 +237,10 @@ export class SimNode {
       status: this.status,
       currentTemp: round(this.currentTemp, 2),
       targetTemp: round(this.targetTemp, 2),
+      aiTargetOffset: round(this.aiTargetOffset, 2),
       ambientTemp: round(this.ambientTemp, 2),
       workload: round(this.workload, 3),
+      taskHeat: round(this.currentTaskHeat(), 3),
       fanActive: this.fanActive,
       fanUntilMs: this.fanUntilMs,
       stats: {
@@ -256,6 +265,7 @@ export class SimNode {
     if (targetTemp !== undefined) {
       this.targetTemp = targetTemp;
     }
+    this.aiTargetOffset = 0;
     this.fanActive = false;
     this.fanUntilMs = 0;
     this.failures = 0;

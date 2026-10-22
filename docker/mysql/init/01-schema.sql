@@ -6,12 +6,15 @@ CREATE TABLE IF NOT EXISTS telemetry (
   target_temp DOUBLE NULL,
   ambient_temp DOUBLE NULL,
   workload DOUBLE NULL,
+  task_heat DOUBLE NULL,
   status TINYINT NULL,
   fan_active TINYINT(1) NULL,
   queue_length INT NULL,
   stack_size INT NULL,
   INDEX idx_telemetry_node_ts (node_id, ts DESC)
 );
+
+ALTER TABLE telemetry ADD COLUMN IF NOT EXISTS task_heat DOUBLE NULL AFTER workload;
 
 CREATE TABLE IF NOT EXISTS events (
   ts BIGINT NOT NULL,

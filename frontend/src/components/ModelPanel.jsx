@@ -1,10 +1,22 @@
 import { recommend } from '../lib/recommendation.js'
 
-export function ModelPanel({ latest, version, meta, enabled, stats, nodes = [] }) {
+const ACTION_LABEL = {
+  fan_on: 'vent. on',
+  fan_off: 'vent. off',
+  set_workload: 'carga',
+  target_offset: 'objetivo',
+  enqueue_cooldown: 'tarea frío',
+  enqueue_load: 'tarea carga',
+  shutdown: 'apagado',
+  startup: 'encendido',
+}
+
+export function ModelPanel({ latest, version, meta, enabled, stats, nodes = [], aiNodes = [] }) {
   const entries = Object.values(latest).sort((a, b) => a.nodeId.localeCompare(b.nodeId))
   const horizon = meta?.horizon_ms ?? entries[0]?.horizonMs
   const horizonLabel = horizon ? `${(horizon / 1000).toFixed(0)} s` : '—'
   const targets = new Map(nodes.map((node) => [node.id, node.targetTemp]))
+  const aiById = new Map(aiNodes.map((node) => [node.nodeId, node]))
 
   if (enabled === false) {
     return (
@@ -40,6 +52,7 @@ export function ModelPanel({ latest, version, meta, enabled, stats, nodes = [] }
           {entries.map((entry) => {
             const target = targets.get(entry.nodeId)
             const rec = recommend(entry.predictedTemp, target)
+            const ai = aiById.get(entry.nodeId)
             const actual = Number.isFinite(entry.actualTemp)
               ? `${entry.actualTemp.toFixed(2)}°`
               : '—'
@@ -53,6 +66,17 @@ export function ModelPanel({ latest, version, meta, enabled, stats, nodes = [] }
                   <span className="model-row__pred">{entry.predictedTemp.toFixed(2)}° prevista</span>
                   <span>real {actual}</span>
                   <span>{entry.latencyMs} ms</span>
+                  {ai && ai.offset !== 0 && (
+                    <span className="model-row__ai">
+                      objetivo IA {ai.offset > 0 ? '+' : ''}
+                      {ai.offset.toFixed(1)}°
+                    </span>
+                  )}
+                  {ai?.lastAction && (
+                    <span className="model-row__ai">
+                      {ACTION_LABEL[ai.lastAction] ?? ai.lastAction}
+                    </span>
+                  )}
                 </div>
               </li>
             )

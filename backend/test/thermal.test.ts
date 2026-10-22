@@ -32,9 +32,10 @@ describe('modelo térmico', () => {
     expect(conFan).toBeLessThan(sinFan);
   });
 
-  it('un nodo inactivo mantiene su temperatura sin variación', () => {
+  it('un nodo inactivo disipa hacia la temperatura ambiente', () => {
     const next = thermalStep(45.5, 30, 20, 0.5, false, false, 10_000, params);
-    expect(next).toBe(45.5);
+    expect(next).toBeLessThan(45.5);
+    expect(next).toBeGreaterThan(20);
   });
 
   it('la demanda de cómputo de la tarea en curso eleva más la temperatura', () => {
@@ -58,6 +59,23 @@ describe('modelo térmico', () => {
     for (let i = 0; i < 100; i += 1) {
       parado.thermalStep(1000);
     }
-    expect(parado.currentTemp).toBe(25);
+    expect(parado.currentTemp).toBeLessThan(25);
+  });
+
+  it('una tarea cooldown enfría mientras se procesa', () => {
+    const conCooldown = new SimNode({ id: 'n4', name: 'n4', type: 'worker', targetTemp: 30 });
+    const inactivo = new SimNode({ id: 'n5', name: 'n5', type: 'worker', targetTemp: 30 });
+    conCooldown.currentTemp = 32;
+    inactivo.currentTemp = 32;
+    conCooldown.workload = 0.05;
+    inactivo.workload = 0.05;
+    conCooldown.enqueueTask({ type: 'cooldown', computeDemand: 5, durationSecs: 10 });
+    conCooldown.startNextTask();
+
+    for (let i = 0; i < 10; i += 1) {
+      conCooldown.thermalStep(1000);
+      inactivo.thermalStep(1000);
+    }
+    expect(conCooldown.currentTemp).toBeLessThan(inactivo.currentTemp);
   });
 });

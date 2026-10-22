@@ -80,6 +80,7 @@ class Worker:
                     "target_temp": x.get("targetTemp") or x.get("target_temp"),
                     "ambient_temp": x.get("ambientTemp") or x.get("ambient_temp"),
                     "workload": x.get("workload"),
+                    "task_heat": x.get("taskHeat") if "taskHeat" in x else x.get("task_heat"),
                     "status": x.get("status"),
                     "fan_active": x.get("fanActive") if "fanActive" in x else x.get("fan_active"),
                     "queue_length": x.get("queueLength") if "queueLength" in x else x.get("queue_length"),

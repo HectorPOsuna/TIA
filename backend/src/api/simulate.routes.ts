@@ -37,6 +37,7 @@ export function simulateRouter(ctx: AppContext): Router {
 
   router.post('/reset', (_req, res) => {
     ctx.engine.reset();
+    ctx.aiControl?.reset();
     res.json({ ok: true });
   });
 

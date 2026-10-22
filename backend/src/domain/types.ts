@@ -106,8 +106,10 @@ export interface NodeDto {
   status: NodeStatus;
   currentTemp: number;
   targetTemp: number;
+  aiTargetOffset: number;
   ambientTemp: number;
   workload: number;
+  taskHeat: number;
   fanActive: boolean;
   fanUntilMs: number;
   stats: NodeStats;
@@ -124,6 +126,7 @@ export type LogType =
   | 'rule'
   | 'task'
   | 'node'
+  | 'ai'
   | 'alert';
 
 export interface LogEntry {
@@ -168,6 +171,7 @@ export type ActionType =
   | 'enqueue_task'
   | 'send_alert'
   | 'reduce_load'
+  | 'set_workload'
   | 'set_target_temperature';
 
 export const ACTION_TYPE_VALUES = [
@@ -178,6 +182,7 @@ export const ACTION_TYPE_VALUES = [
   'enqueue_task',
   'send_alert',
   'reduce_load',
+  'set_workload',
   'set_target_temperature',
 ] as const;
 

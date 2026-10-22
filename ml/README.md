@@ -27,10 +27,14 @@ cd ml
 .\.venv\Scripts\python -m ml.train            # preprocesa, entrena y evalúa
 .\.venv\Scripts\python -m ml.train --write-db # además inserta las alertas en events
 .\.venv\Scripts\python -m ml.train --no-ollama
+.\.venv\Scripts\python -m ml.train --since 2026-10-22T17:00:00Z  # solo datos desde una fecha/epoch
 .\.venv\Scripts\python -m ml.predict --node node-1
 .\.venv\Scripts\python -m ml.worker             # worker de inferencia en vivo (stdin/stdout JSON)
 .\.venv\Scripts\python -m pytest tests        # 18 tests
 ```
+
+Tras un cambio de dinámica térmica, usa `--since` para entrenar solo con telemetría del
+comportamiento nuevo y evitar mezclar muestras del modelo anterior.
 
 `train` genera en `ml/out/`:
 
@@ -44,7 +48,7 @@ También vuelca un snapshot de la telemetría usada en `ml/data/telemetry.csv`.
 ## Flujo del pipeline
 
 1. **Export** (`export.py`): lee `telemetry` (ts, node_id, temperaturas, carga, estado, cola, pila) ordenado por nodo y timestamp.
-2. **Features** (`features.py`): por nodo, lags de temperatura (t-1..t-8), delta, media/desviación móvil de 5, contexto (workload, fan, estado, cola, pila, setpoint, ambiente) y `rel_time_ms`. El **target es la temperatura horizonte ms en el futuro** (por defecto 15 s), calculada por `searchsorted`, así el horizonte es agnóstico a `TICK_MS`. Se descartan los `NaN` de la ventana de calentamiento y de la cola final.
+2. **Features** (`features.py`): por nodo, lags de temperatura (t-1..t-8), delta, media/desviación móvil de 5, contexto (workload, `task_heat`, fan, estado, cola, pila, setpoint, ambiente) y `rel_time_ms`. El **target es la temperatura horizonte ms en el futuro** (por defecto 15 s), calculada por `searchsorted`, así el horizonte es agnóstico a `TICK_MS`. Se descartan los `NaN` de la ventana de calentamiento y de la cola final.
 3. **Split** (`model.py`): reparto **cronológico 80/20 por nodo** (sin mezclar tiempo), compatibiliza `temp_lag_1` como baseline de persistencia.
 4. **Entrenamiento**: `GradientBoostingRegressor(seed=42)` sobre el tramo de entrenamiento.
 5. **Métricas** (`metrics.py`): MAE/RMSE globales y por nodo en test; `mae_improvement_pct` = mejora relativa frente a la baseline.
@@ -66,9 +70,10 @@ no requiere puerto.
 
 - El modelo térmico del simulador es muy suave: a un tick, "el último valor" (baseline)
   es casi perfecto y no hay nada que aprender. El pipeline predice a un **horizonte real
-  de 15 s**, donde la baseline se degrada y el modelo aporta valor.
-- Resultado de referencia (4 nodos, 1712 lecturas, horizonte 15 s): **MAE 0.078 °C**,
-  **RMSE 0.087 °C** vs baseline MAE **0.301 °C** (~74 % de mejora).
+  de 15 s** e incorpora `task_heat` y `status` para modelar cooldown e inactividad.
+- Resultado de referencia de la sesión de reentrenamiento (4 nodos, 3892 lecturas,
+  horizonte 15 s): **MAE 0.231 °C**, **RMSE 0.403 °C**. El tramo final es estacionario
+  (baseline MAE 0.002 °C); con transiciones de apagado/encendido el MAE sube a ~1 °C.
 - Con `ML_THRESHOLD_SIGMA=3` (por defecto) los datos nominales apenas generan alertas
   (0 en la muestra). Bajarlo (p. ej. `1.0`) captura la cola de residuos y demuestra el
   flujo completo: alertas, explicación Ollama y escritura en `events`.

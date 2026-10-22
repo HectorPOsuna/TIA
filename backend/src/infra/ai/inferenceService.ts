@@ -18,6 +18,7 @@ interface Sample {
   targetTemp: number;
   ambientTemp: number;
   workload: number;
+  taskHeat: number;
   status: number;
   fanActive: number;
   queueLength: number;
@@ -28,9 +29,10 @@ function toSample(node: NodeDto): Sample {
   return {
     ts: node.updatedAt,
     currentTemp: node.currentTemp,
-    targetTemp: node.targetTemp,
+    targetTemp: node.targetTemp + node.aiTargetOffset,
     ambientTemp: node.ambientTemp,
     workload: node.workload,
+    taskHeat: node.taskHeat,
     status: STATUS_CODE[node.status],
     fanActive: node.fanActive ? 1 : 0,
     queueLength: node.queue.size,

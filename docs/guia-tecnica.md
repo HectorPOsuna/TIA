@@ -89,8 +89,10 @@ Un nodo representa un servidor. El sistema crea **`node-general`** (tipo `genera
 | `id`, `name`, `type` | string, `'general'\|'worker'` | Identidad |
 | `status` | `'active'\|'inactive'\|'error'` | Equivale a `STATUS_CODE` 0/1/2 |
 | `currentTemp` | number | Temperatura actual (°C, 2 decimales) |
-| `targetTemp`, `ambientTemp` | number | Objetivo y ambiente (°C) |
+| `targetTemp`, `ambientTemp` | number | Objetivo del usuario y ambiente (°C) |
+| `aiTargetOffset` | number | Corrección temporal del objetivo aplicada por la IA (±1.5 °C); el objetivo efectivo es `targetTemp + aiTargetOffset` |
 | `workload` | number | Carga de trabajo 0–1 (3 decimales) |
+| `taskHeat` | number | Calor neto de la tarea en curso (`−demand×0.07` para `cooldown`, `+demand×0.07` para el resto; 0 si inactivo) |
 | `fanActive`, `fanUntilMs` | boolean, number | Ventilador y hasta cuándo |
 | `stats` | `{failures, consecutiveFailures, maxConsecutiveFailures, ok}` | Lecturas fallidas simuladas |
 | `queue` | `QueueDto` | Estado de la cola de prioridad |
@@ -103,7 +105,7 @@ El "estado en error" es un **contador simulado** de fallos consecutivos: cuando 
 
 `PriorityTaskQueue` procesa primero la tarea de **mayor prioridad** (`priority`, 1 = menor … 5 = mayor) y, en empate, la **más antigua** (FIFO), con capacidad limitada (`NODE_QUEUE_CAPACITY` por nodo, `PENDING_POOL_CAPACITY` para el pool global). API: `enqueue`, `peek` (solo lectura), `poll` (extrae), `startProcessing`, `complete`, `clear`, `toArray` (orden de servicio).
 
-Tipos de tarea (`TaskType`): `cooldown`, `maintenance`, `reboot`, `calibration`, `custom`. Estados: `pending → processing → completed`. Campos: `id`, `type`, `priority`, `computeDemand` (1–5), `durationSecs` (1–10, defecto `5`), `status`, `enqueuedAt`, `startedAt?`, `completedAt?`, `description?`, `payload?`.
+Tipos de tarea (`TaskType`): `cooldown`, `maintenance`, `reboot`, `calibration`, `custom`. Estados: `pending → processing → completed`. Campos: `id`, `type`, `priority`, `computeDemand` (1–5), `durationSecs` (1–10, defecto `5`), `status`, `enqueuedAt`, `startedAt?`, `completedAt?`, `description?`, `payload?`. Las tareas `cooldown` **restan** calor mientras se procesan (`−computeDemand × COOLDOWN_TASK_COOLING`); el resto suma calor.
 
 ### Dispatcher (`dispatcher.ts`)
 
@@ -147,7 +149,8 @@ interface Rule {
 | `enqueue_task` | `taskType` (def. `cooldown`), `priority?` (1–5), `computeDemand?` (1–5), `durationSecs?` (1–10) o `durationMs` (retrocompatible), `description` | Encola tarea: con `subject=any\|all` entra **al pool global** (emite `task:pending`); con `subject=system\|node` a la cola del nodo (emite `task:queued`) |
 | `send_alert` | `message` | Log crítico + evento WebSocket `alert` |
 | `reduce_load` | `by` (def. 0.3) | Baja `workload` (mínimo 0) |
-| `set_target_temperature` | `target` | Ajusta `targetTemp` |
+| `set_workload` | `value` (0–1) | Fija `workload` |
+| `set_target_temperature` | `target` | Ajusta `targetTemp` y resetea `aiTargetOffset` |
 
 ## Motor de simulación (`engine/simulationEngine.ts`)
 
@@ -163,10 +166,10 @@ interface Rule {
 Modelo térmico (`thermal.ts`):
 
 ```
-dT/dt = (target − T) / τ + loadHeatGain·(workload + demanda×COMPUTE_DEMAND_HEAT) − dissipationRate·(T − ambient)·(fan ? 3 : 1)
+dT/dt = ((target + aiTargetOffset) − T) / τ + loadHeatGain·workload + taskHeat − dissipationRate·(T − ambient)·(fan ? 3 : 1)
 ```
 
-Con constantes por defecto: `timeConstantMs = 20000`, `loadHeatGain = 0.35`, `dissipationRate = 0.002`, `fanDissipationMultiplier = 3`, `COMPUTE_DEMAND_HEAT = 0.07`. Un nodo inactivo no cambia de temperatura; la tarea en curso aporta `computeDemand × 0.07` a la carga efectiva.
+Con constantes por defecto: `timeConstantMs = 20000`, `loadHeatGain = 0.35`, `dissipationRate = 0.002`, `fanDissipationMultiplier = 3`, `COMPUTE_DEMAND_HEAT = 0.07`, `COOLDOWN_TASK_COOLING = 0.07`. `taskHeat` es negativo para tareas `cooldown` y positivo para el resto. Un nodo inactivo **no congela** su temperatura: disipa hacia el ambiente con `INACTIVE_COOLING_TIME_MS = 60000` (`dT/dt = (ambient − T) / 60 s`), lo que hace útil el apagado de emergencia.
 
 ## API REST
 
@@ -270,6 +273,20 @@ curl -X POST http://localhost:3000/api/rules -H "Content-Type: application/json"
 | POST | `/predict` | `{ok:true, nodeId, predictedTemp, actualTemp, horizonMs, modelVersion, latencyMs, featuresHash, at}`; con `{nodes:[...]}` devuelve `{count, results}` con el estado por nodo; 404 si el nodo no existe, 409 si la ventana es insuficiente, 502 si la inferencia falla, 503 si la inferencia está deshabilitada |
 | GET | `/version` | `{version, meta}` del modelo cargado (la `version` es `sha256` del `model.joblib`) |
 
+### `/api/ai`
+
+| Método | Ruta | Body | Respuesta |
+|---|---|---|---|
+| GET | `/control` | — | `{available, enabled, policy, stats, nodes, recent}`; `available:false` si no hay inferencia |
+| PATCH | `/control` | `{enabled?, policy?}` (política con umbrales y flags `allowFan/allowLoad/allowTarget/allowTasks/allowShutdown`) | Estado actualizado; 503 si el control no está disponible |
+
+La política corre en `domain/aiControl.ts` (pura) y el controlador en `infra/ai/inferenceController.ts`.
+Solo actúa sobre workers, exige confirmaciones y cooldown, y emite `ai:action`. Los cambios manuales
+de ventilador, carga u objetivo pausan la IA en ese nodo (`AI_CONTROL_MANUAL_PAUSE_MS`). El
+ajuste de objetivo usa `aiTargetOffset` y se restaura al volver a banda; el objetivo del usuario no
+se modifica. Al desactivar el control se liberan el offset, el ventilador propio y los apagados de
+emergencia aplicados por la IA, y se emite `node:updated` si cambió el estado del nodo.
+
 ## Eventos Socket.IO
 
 El servidor sobrescribe en `infra/sockets.ts`: cada evento del bus se reenvía como paquete `{type, ts, payload}` con nombre igual al evento. El cliente se conecta con `io()` (proxy de Vite) y puede pedir suscripción a un nodo con `node:subscribe` / `node:unsubscribe`.
@@ -284,6 +301,7 @@ El servidor sobrescribe en `infra/sockets.ts`: cada evento del bus se reenvía c
 | `task:pending` | `{task}` | Al entrar una tarea al pool global (API o regla `any`/`all`) |
 | `alert` | `{level:'critical', message, nodeId?, at}` | Acción `send_alert` |
 | `inference:completed` | `{nodeId, predictedTemp, actualTemp, horizonMs, modelVersion, latencyMs, featuresHash?, at}` | Tras cada inferencia automática o por API |
+| `ai:action` | `{nodeId, action, params?, reason, predictedTemp, actualTemp, baseTarget, targetTemp, offset, applied, at}` | Cuando la política de IA aplica una acción (persistida como `kind=ai_action`) |
 
 Los eventos emitidos salen como `io.emit(...)` (broadcast a todos los conectados); las suscripciones por nodo usan salas `node:<id>` (los eventos actuales ignoran la sala y se emiten globalmente).
 
@@ -330,6 +348,26 @@ Definidas en `backend/src/config.ts` (schema zod con default), ejemplo en `backe
 | `DB_FLUSH_MS` | `1000` | Intervalo de vaciado del buffer hacia la BD |
 | `DB_MAX_BUFFER` | `1000` | Filas máximas antes de forzar un vaciado |
 | `DB_SCHEMA_FILE` | `../docker/mysql/init/01-schema.sql` | DDL ejecutado al arrancar (fuente única) |
+
+### Control IA
+
+| Variable | Default | Efecto |
+|---|---|---|
+| `AI_CONTROL_ENABLED` | `false` | Arranca con el control activo; la UI/API puede cambiarlo en caliente |
+| `AI_CONTROL_HOT_DELTA` / `COLD_DELTA` | `1.5` | Banda de disparo respecto al objetivo (°C) |
+| `AI_CONTROL_RESTORE_DELTA` | `0.5` | Banda para restaurar objetivo/ventilador |
+| `AI_CONTROL_CONFIRMATIONS` | `2` | Predicciones consecutivas necesarias |
+| `AI_CONTROL_COOLDOWN_MS` | `5000` | Espera mínima entre acciones del mismo nodo |
+| `AI_CONTROL_MAX_ACTIONS_PER_MIN` | `20` | Límite global de acciones |
+| `AI_CONTROL_LOAD_STEP/MIN/MAX` | `0.1` / `0.05` / `0.8` | Rango y paso de carga |
+| `AI_CONTROL_TARGET_MARGIN` / `STEP` | `1.5` / `0.5` | Offset máximo (tope duro 1.5 °C) y paso del objetivo efectivo |
+| `AI_CONTROL_TASK_INTERVAL_MS` | `15000` | Mínimo entre tareas encoladas por la IA |
+| `AI_CONTROL_EMERGENCY_DELTA` | `10` | Diferencia para apagado de emergencia |
+| `AI_CONTROL_RESTART_DELTA` | `2` | Umbral de reactivación de un nodo apagado por la IA |
+| `AI_CONTROL_MIN_DOWNTIME_MS` | `30000` | Tiempo mínimo apagado antes de reactivar |
+| `AI_CONTROL_MANUAL_PAUSE_MS` | `30000` | Pausa tras detectar un cambio manual |
+| `AI_CONTROL_ALLOW_FAN/LOAD/TARGET/TASKS` | `true` | Acciones permitidas |
+| `AI_CONTROL_ALLOW_SHUTDOWN` | `false` | Apagado de emergencia (requiere activarlo) |
 
 ## Persistencia (S5)
 
@@ -399,6 +437,7 @@ detalle estructurado.
 | `target_temp` | float | `NodeDto.targetTemp` |
 | `ambient_temp` | float | `NodeDto.ambientTemp` |
 | `workload` | float | `NodeDto.workload` |
+| `task_heat` | float | `NodeDto.taskHeat` (0 en filas antiguas) |
 | `status` | field | `STATUS_CODE[NodeDto.status]` (0/1/2) |
 | `fan_active` | bool | `NodeDto.fanActive` |
 | `queue_length` | int | `NodeDto.queue.size` |
@@ -439,7 +478,7 @@ predicción, las métricas y las alertas. Orquestado con `Python -m ml.train` (v
 |---|---|---|
 | Conexión pymysql (placeholders `:nombre`, `insert_many`) | `db.py` | — |
 | Lectura de `telemetry` | `export.py` | DataFrame + snapshot CSV |
-| Feature engineering (lags t-1..t-8, delta, medias móviles, contexto, `rel_time_ms`) | `features.py` | `X`, `y`, `meta` |
+| Feature engineering (lags t-1..t-8, delta, medias móviles, contexto con `task_heat`, `rel_time_ms`) | `features.py` | `X`, `y`, `meta` |
 | Target a `ML_HORIZON_MS` futura vía `searchsorted` | `features.py` | serie objetivo (agnóstico a `TICK_MS`) |
 | Split cronológico 80/20 por nodo + `GradientBoostingRegressor(seed)` | `model.py` | modelo + baseline `temp_lag_1` |
 | MAE/RMSE globales y por nodo, mejora % vs baseline | `metrics.py` | `metrics.json` |
@@ -448,12 +487,13 @@ predicción, las métricas y las alertas. Orquestado con `Python -m ml.train` (v
 | Orquestador y escritura opcional en `events` (`--write-db`) | `train.py` | `out/*` + filas `kind=alert, type=ai` |
 | Inferencia de producción (`predict --node`) | `predict.py` | predicción a `T+15 s` |
 
-Diseño clave: el simulador térmico es tan suave que la baseline de persistencia gana a
-horizonte corto; el pipeline predice a **15 s reales** (`ML_HORIZON_MS`), donde la baseline
-se degrada (MAE 0.301 °C) y el modelo aporta (MAE 0.078 °C, ~74 % mejor). Con
+Diseño clave: el simulador térmico es tan suave que en régimen estacionario la baseline de
+persistencia es casi perfecta; el pipeline predice a **15 s reales** (`ML_HORIZON_MS`) e incorpora
+`task_heat` y `status`. En la sesión de reentrenamiento con cooldown e inactividad el MAE global fue
+0.231 °C (sube a ~1 °C si el test incluye transiciones de apagado/encendido). Con
 `ML_THRESHOLD_SIGMA=3` los datos nominales no generan alertas; el ejemplo del README con
 σ=1.0 demuestra el flujo completo. Los artefactos (`ml/out/`, `ml/data/`) están
-gitignoreados y se regeneran con `ml.train`; los tests pytest (`ml/tests/`, 10) importan
+gitignoreados y se regeneran con `ml.train`; los tests pytest (`ml/tests/`, 18) importan
 `ml.*` vía `conftest.py` que añade la raíz del repo a `sys.path`.
 
 ## Inferencia en vivo (S7, `infra/ai/`)

@@ -1,4 +1,5 @@
 import type { NodeDto, Rule, SystemSnapshotDto, TaskDto } from '../domain/types.js';
+import type { AiActionKind } from '../domain/aiControl.js';
 
 export interface NodeUpdatedPayload {
   nodeId: string;
@@ -38,6 +39,20 @@ export interface InferencePayload {
   at: number;
 }
 
+export interface AiActionPayload {
+  nodeId: string;
+  action: AiActionKind;
+  params?: Record<string, unknown>;
+  reason: string;
+  predictedTemp: number;
+  actualTemp: number;
+  baseTarget: number;
+  targetTemp: number;
+  offset: number;
+  applied: boolean;
+  at: number;
+}
+
 export interface SimEventMap {
   'state:update': SystemSnapshotDto;
   'node:updated': NodeUpdatedPayload;
@@ -47,4 +62,5 @@ export interface SimEventMap {
   'task:pending': TaskPendingPayload;
   alert: AlertPayload;
   'inference:completed': InferencePayload;
+  'ai:action': AiActionPayload;
 }

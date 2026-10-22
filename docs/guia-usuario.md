@@ -95,6 +95,17 @@ La sección **Modelo IA** muestra la versión del modelo (`sha256:…`), su hori
 
 Si el backend arranca con `INFERENCE_ENABLED=false` o sin modelo entrenado, la sección lo indica y el resto del panel sigue funcionando.
 
+### Control IA
+
+La sección **Control IA** cierra el lazo entre las predicciones y el simulador. Empieza **desactivada**: el botón **Activar IA** permite que la política actúe sobre los workers.
+
+- **Caliente** (predicción por encima del objetivo): enciende el ventilador, baja la carga, encola una tarea `cooldown` y reduce temporalmente el objetivo efectivo (máx. ±1.5 °C).
+- **Frío** (predicción por debajo del objetivo): apaga el ventilador si lo encendió la IA, sube carga, encola una tarea de mantenimiento y sube el objetivo efectivo.
+- **En banda**: restaura el objetivo efectivo y apaga el ventilador de la IA. El objetivo del usuario (`targetTemp`) no se modifica; el ajuste se ve como `aiTargetOffset` en el panel del nodo.
+- **Apagado de emergencia**: desactivado por defecto. Si se marca la casilla **Apagado**, la IA puede apagar un worker con una desviación extrema; el nodo se enfría hacia el ambiente y la IA puede reactivarlo cuando esté frío.
+
+La lista de **Últimas acciones** muestra el nodo, la acción, la predicción, el objetivo base y el efectivo. La política exige confirmaciones, respeta un cooldown y un máximo de acciones por minuto; si cambias manualmente el objetivo, el ventilador o la carga de un nodo, la IA se pausa unos segundos en ese nodo. Al **Detener IA**, se libera el offset, se apaga el ventilador que encendió la IA y se reactivan los nodos que había apagado. El **Servidor General** no se controla porque es un agregado.
+
 ### Eficiencia
 
 Indicadores de la sesión calculados en el navegador: nodos **en banda** (a ±2 °C del objetivo), **desvío medio**, **% de la sesión en banda**, ventiladores encendidos, **carga media**, tareas en el pool y dos sparklines (temperatura media y tareas pendientes en el pool).

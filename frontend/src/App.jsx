@@ -3,11 +3,13 @@ import { useRules } from './hooks/useRules.js'
 import { useSimulation } from './hooks/useSimulation.js'
 import { useHistory } from './hooks/useHistory.js'
 import { useInference } from './hooks/useInference.js'
+import { useAiControl } from './hooks/useAiControl.js'
 import { Header } from './components/Header.jsx'
 import { SummaryBar } from './components/SummaryBar.jsx'
 import { CollapsiblePanel } from './components/CollapsiblePanel.jsx'
 import { NodeDetailPanel } from './components/NodeDetailPanel.jsx'
 import { ModelPanel } from './components/ModelPanel.jsx'
+import { AiControlPanel } from './components/AiControlPanel.jsx'
 import { EfficiencyPanel } from './components/EfficiencyPanel.jsx'
 import { RulesPanel } from './components/RulesPanel.jsx'
 import { PoolPanel } from './components/PoolPanel.jsx'
@@ -23,12 +25,14 @@ export default function App() {
   const { rules, triggered, api: rulesApi } = useRules()
   const history = useHistory()
   const inference = useInference()
+  const aiControl = useAiControl()
 
   const [selectedId, setSelectedId] = useState(null)
   const [target, setTarget] = useState('')
   const [open, setOpen] = useState({
     detail: true,
     model: true,
+    ai: true,
     efficiency: false,
     rules: false,
     pool: false,
@@ -48,6 +52,10 @@ export default function App() {
       ? effective.general
       : effective.workers.find((w) => w.id === selectedId) ?? null
     : null
+  const selectedAi =
+    selectedId && aiControl.status?.nodes
+      ? aiControl.status.nodes.find((entry) => entry.nodeId === selectedId) ?? null
+      : null
 
   const series = useMemo(() => {
     if (!selectedId) return null
@@ -136,6 +144,7 @@ export default function App() {
               series={series}
               api={api}
               inference={!isReplay && selectedId ? inference.latest[selectedId] : undefined}
+              aiNode={!isReplay ? selectedAi : null}
             />
           </CollapsiblePanel>
 
@@ -158,6 +167,29 @@ export default function App() {
               enabled={inference.enabled}
               stats={inference.stats}
               nodes={live ? [live.general, ...live.workers] : []}
+              aiNodes={aiControl.status?.nodes ?? []}
+            />
+          </CollapsiblePanel>
+
+          <CollapsiblePanel
+            title="Control IA"
+            meta={
+              aiControl.status?.available === false
+                ? 'n/a'
+                : aiControl.status?.enabled
+                  ? 'auto'
+                  : 'off'
+            }
+            open={open.ai}
+            onToggle={() => toggle('ai')}
+          >
+            <AiControlPanel
+              status={aiControl.status}
+              recent={aiControl.recent}
+              error={aiControl.error}
+              busy={aiControl.busy}
+              onEnabled={aiControl.setEnabled}
+              onPolicy={aiControl.setPolicy}
             />
           </CollapsiblePanel>
 

@@ -3,8 +3,18 @@ import { Sparkline } from './Sparkline.jsx'
 import { recommend } from '../lib/recommendation.js'
 
 const STATUS_BADGE = { active: 'badge--ok', inactive: 'badge--muted', error: 'badge--danger' }
+const AI_ACTION = {
+  fan_on: 'ventilador on',
+  fan_off: 'ventilador off',
+  set_workload: 'ajuste de carga',
+  target_offset: 'ajuste de objetivo',
+  enqueue_cooldown: 'tarea de frío',
+  enqueue_load: 'tarea de carga',
+  shutdown: 'apagado',
+  startup: 'encendido',
+}
 
-export function NodeDetailPanel({ node, series, api, inference }) {
+export function NodeDetailPanel({ node, series, api, inference, aiNode }) {
   if (!node) {
     return (
       <div className="detail__none">Selecciona un nodo en el plano 3D para ver sus controles.</div>
@@ -14,6 +24,8 @@ export function NodeDetailPanel({ node, series, api, inference }) {
   const load = Math.max(0, Math.min(1, node.workload))
   const rec = inference ? recommend(inference.predictedTemp, node.targetTemp) : null
   const delta = inference ? inference.predictedTemp - node.currentTemp : null
+  const offset = node.aiTargetOffset ?? 0
+  const effectiveTarget = node.targetTemp + offset
 
   return (
     <div>
@@ -32,8 +44,21 @@ export function NodeDetailPanel({ node, series, api, inference }) {
         <small> °C</small>
       </div>
       <div className="hint">
-        objetivo {node.targetTemp.toFixed(1)}°C · ambiente {node.ambientTemp.toFixed(1)}°C
+        objetivo {node.targetTemp.toFixed(1)}°C
+        {offset !== 0 && ` · IA ${offset > 0 ? '+' : ''}${offset.toFixed(1)}° (${effectiveTarget.toFixed(1)}°C)`}
+        {' · '}ambiente {node.ambientTemp.toFixed(1)}°C
       </div>
+
+      {aiNode && (aiNode.aiShutdown || aiNode.lastAction) && (
+        <div className="detail__ai-status">
+          <span className="hint">Control IA</span>
+          <span className={`badge ${aiNode.aiShutdown ? 'badge--danger' : 'badge--info'}`}>
+            {aiNode.aiShutdown
+              ? 'apagado por IA'
+              : AI_ACTION[aiNode.lastAction] ?? aiNode.lastAction}
+          </span>
+        </div>
+      )}
 
       <div className="detail__actions">
         <button

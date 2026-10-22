@@ -60,7 +60,10 @@ export function nodesRouter(ctx: AppContext): Router {
     const p = parsed.value;
     if (p.name !== undefined) node.name = p.name;
     if (p.status !== undefined) node.status = p.status;
-    if (p.targetTemp !== undefined) node.targetTemp = p.targetTemp;
+    if (p.targetTemp !== undefined) {
+      node.targetTemp = p.targetTemp;
+      node.aiTargetOffset = 0;
+    }
     if (p.ambientTemp !== undefined) node.ambientTemp = p.ambientTemp;
     if (p.workload !== undefined) node.workload = p.workload;
 

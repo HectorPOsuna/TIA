@@ -22,7 +22,7 @@ Ver [backend/README.md](backend/README.md) para API REST, eventos WebSocket, mod
 cd backend
 pnpm.cmd install
 pnpm.cmd dev        # http://localhost:3000
-pnpm.cmd run test   # 61 tests vitest
+pnpm.cmd run test   # 76 tests vitest
 pnpm.cmd run build
 ```
 
@@ -42,7 +42,31 @@ curl localhost:3000/api/inference/version
 ```
 
 Se configura con `INFERENCE_*` en `backend/.env` (`INFERENCE_ENABLED`, `INFERENCE_HORIZON_MS`,
-`INFERENCE_THROTTLE_MS`, `INFERENCE_PYTHON`). No se muestra en el frontend.
+`INFERENCE_THROTTLE_MS`, `INFERENCE_PYTHON`). El frontend la consume en el panel **Modelo IA** y en
+la predicción del nodo seleccionado.
+
+### Control automático de IA (S8)
+
+El modelo sigue siendo un regresor, pero el backend añade una **política determinista** que consume
+sus predicciones y ejecuta acciones reales sobre los workers. Está **desactivada por defecto** y se
+activa con el interruptor del panel **Control IA** o con `PATCH /api/ai/control`:
+
+- **Caliente** (`predicha > objetivo + 1.5 °C`): ventilador, reducción de carga, tarea `cooldown`,
+  ajuste temporal del objetivo (máx. ±1.5 °C) y apagado de emergencia opcional.
+- **Frío** (`predicha < objetivo − 1.5 °C`): apaga el ventilador si lo encendió la IA, sube carga,
+  encola una tarea de mantenimiento y ajusta el objetivo hacia arriba.
+- **Neutral**: restaura el objetivo y apaga el ventilador de la IA.
+
+Guardarraíles: 2 predicciones de confirmación, cooldown de 5 s, máximo 20 acciones/minuto, límites
+de carga, solo workers (el general es un agregado) y pausa automática si se detecta un cambio manual.
+Cada acción se emite como `ai:action`, se registra con tipo `ai` y se persiste en `events`
+(`kind=ai_action`). El apagado de emergencia está desactivado por defecto (`AI_CONTROL_ALLOW_SHUTDOWN`).
+Al desactivar el control se liberan el offset, el ventilador y los apagados que había aplicado la IA.
+
+Cambios asociados del simulador: las tareas `cooldown` **restan calor** mientras se procesan, los
+nodos apagados **disipan hacia el ambiente**, y `set_workload` permite fijar la carga. La telemetría
+expone `task_heat` para que el modelo aprenda el efecto térmico de cada tarea. Configuración en
+`AI_CONTROL_*` (ver `backend/.env.example`).
 
 ## Base de datos (BD time-series)
 
@@ -69,12 +93,16 @@ anomalías por residuo de predicción y redacta avisos con Ollama (qwen3). Ver
 cd ml
 .\.venv\Scripts\python -m ml.train            # entrena y genera ml/out/ (sin tocar la BD)
 .\.venv\Scripts\python -m ml.train --write-db # además inserta las alertas en la tabla events
+.\.venv\Scripts\python -m ml.train --since 2026-10-22T00:00:00Z  # solo telemetría reciente
 .\.venv\Scripts\python -m ml.predict --node node-1
 .\.venv\Scripts\python -m pytest tests        # 18 tests
 ```
 
-Resultado de referencia (horizonte 15 s, muestra de 4 nodos, 1712 lecturas): MAE 0.078 °C,
-RMSE 0.087 °C frente a una baseline de persistencia con MAE 0.301 °C (mejora ≈ 74 %).
+Resultado de referencia de la sesión de reentrenamiento con la nueva dinámica (horizonte 15 s,
+4 nodos, 3892 lecturas): MAE 0.231 °C y RMSE 0.403 °C. El tramo final es estacionario y la
+baseline de persistencia es casi perfecta (MAE 0.002 °C); en tramos con transiciones de
+apagado/encendido o cambios de objetivo el MAE sube a ~1 °C. `task_heat` y `status` permiten
+al modelo representar el enfriamiento por tareas y los nodos inactivos.
 
 ## Frontend
 
@@ -83,10 +111,11 @@ automática: cada nodo es una cabina extruida cuyo color y altura reflejan su te
 al objetivo; al hacer clic abre el panel de controles en la barra lateral (objetivo ±5°, ventilador,
 encolar tarea, tendencia, cola y pila LIFO). La barra lateral agrupa, en secciones colapsables, el
 nodo seleccionado, el **modelo IA** (versión, horizonte, predicción por nodo a 15 s y recomendación
-estable/enfriar/subir carga), la **eficiencia** (nodos en banda ±2 °C, desvío medio, sesión en banda,
-ventiladores, carga y pool, con sparklines de la sesión), la cola global (pool), las reglas reactivas
-(con sus últimos disparos) y las alertas. Los últimos **600 estados** de la sesión se guardan en el
-navegador y permiten **replay** del mapa térmico con línea de tiempo y reproducción automática.
+estable/enfriar/subir carga), el **control IA** (interruptor, acciones permitidas y feed de decisiones),
+la **eficiencia** (nodos en banda ±2 °C, desvío medio, sesión en banda, ventiladores, carga y pool, con
+sparklines de la sesión), la cola global (pool), las reglas reactivas (con sus últimos disparos) y las
+alertas. Los últimos **600 estados** de la sesión se guardan en el navegador y permiten **replay** del
+mapa térmico con línea de tiempo y reproducción automática.
 
 ```bash
 cd frontend

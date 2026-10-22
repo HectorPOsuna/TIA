@@ -54,6 +54,12 @@ Por defecto escucha en `http://localhost:3000` con `GET /health` de verificació
 | `DB_FLUSH_MS` | `1000` | Intervalo de vaciado del buffer hacia la BD |
 | `DB_MAX_BUFFER` | `1000` | Filas máximas antes de forzar un vaciado |
 | `DB_SCHEMA_FILE` | `../docker/mysql/init/01-schema.sql` | DDL ejecutado al arrancar (fuente única del esquema) |
+| `INFERENCE_ENABLED` | `true` | Arranca el worker Python de inferencia |
+| `INFERENCE_HORIZON_MS` | `15000` | Horizonte de predicción |
+| `INFERENCE_PYTHON` | `ml/.venv/Scripts/python.exe` | Intérprete del worker |
+| `AI_CONTROL_ENABLED` | `false` | Arranca con el control IA en lazo cerrado |
+| `AI_CONTROL_ALLOW_SHUTDOWN` | `false` | Permite el apagado de emergencia |
+| `AI_CONTROL_*` | ver `.env.example` | Umbrales, cooldown, límites de carga y pausa manual |
 
 ## Arquitectura
 
@@ -194,8 +200,19 @@ persisten en `RULES_FILE` al crear/editar/eliminar por API.
 
 ### Logs — `/api/logs`
 
-`GET /api/logs?level=info,warning,critical&type=rule|task|node|api&nodeId=node-1&since=<ms>&limit=<n>`.
+`GET /api/logs?level=info,warning,critical&type=rule|task|node|api|ai&nodeId=node-1&since=<ms>&limit=<n>`.
 `DELETE /api/logs` limpia el buffer y el archivo persistido.
+
+### Control IA — `/api/ai`
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/control` | Política, estado por worker, estadísticas y últimas acciones |
+| PATCH | `/control` | `{enabled?, policy?}`: activa/desactiva o ajusta umbrales y flags de acción |
+
+El control solo actúa sobre workers y consume las predicciones de `/api/inference`.
+Está desactivado por defecto; cada acción se emite como `ai:action` y se persiste en
+`events` con `kind=ai_action`.
 
 ### Motor — `/api/sim`
 
@@ -220,6 +237,8 @@ Conecta `io("http://localhost:3000")`. Todos los paquetes llegan como
 | `task:queued` / `task:completed` | `{ nodeId, task }` |
 | `task:pending` | `{ task }` (entra al pool global) |
 | `alert` | `{ nodeId, message, level }` |
+| `inference:completed` | Predicción del worker (`nodeId`, `predictedTemp`, `actualTemp`, …) |
+| `ai:action` | Acción aplicada por el control IA (`nodeId`, `action`, `reason`, `offset`, …) |
 
 El cliente puede suscribirse a un nodo concreto:
 

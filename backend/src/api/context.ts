@@ -4,6 +4,7 @@ import type { SimulationEngine } from '../engine/simulationEngine.js';
 import type { RuleStore } from '../domain/rules-store.js';
 import type { SystemSimulation } from '../domain/system.js';
 import type { InferenceService } from '../infra/ai/inferenceService.js';
+import type { InferenceController } from '../infra/ai/inferenceController.js';
 import type { LogStore } from '../infra/logger.js';
 
 export interface AppContext {
@@ -13,4 +14,5 @@ export interface AppContext {
   engine: SimulationEngine;
   bus: EventBus<SimEventMap>;
   inference?: InferenceService;
+  aiControl?: InferenceController;
 }

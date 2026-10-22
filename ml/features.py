@@ -29,6 +29,7 @@ def build_features(
         built["temp_ma5"] = group["current_temp"].rolling(5, min_periods=1).mean()
         built["temp_std5"] = group["current_temp"].rolling(5, min_periods=2).std()
         built["workload"] = group["workload"]
+        built["task_heat"] = group["task_heat"].fillna(0) if "task_heat" in group else 0.0
         built["fan_active"] = group["fan_active"].fillna(0)
         built["status"] = group["status"].fillna(0)
         built["queue_length"] = group["queue_length"].fillna(0)
@@ -66,6 +67,7 @@ def build_inference_features(
     built["temp_ma5"] = group["current_temp"].rolling(5, min_periods=1).mean()
     built["temp_std5"] = group["current_temp"].rolling(5, min_periods=2).std()
     built["workload"] = group["workload"]
+    built["task_heat"] = group["task_heat"].fillna(0) if "task_heat" in group else 0.0
     built["fan_active"] = group["fan_active"].fillna(0)
     built["status"] = group["status"].fillna(0)
     built["queue_length"] = group["queue_length"].fillna(0)

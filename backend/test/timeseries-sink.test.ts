@@ -16,8 +16,10 @@ function makeNode(overrides: Partial<NodeDto> = {}): NodeDto {
     status: 'active',
     currentTemp: 26.5,
     targetTemp: 30,
+    aiTargetOffset: 0,
     ambientTemp: 20,
     workload: 0.3,
+    taskHeat: 0,
     fanActive: false,
     fanUntilMs: 0,
     stats: {
@@ -95,11 +97,11 @@ describe('TimeSeriesSink telemetría', () => {
     expect(driver.calls[0].sql).toMatch(/^INSERT INTO `telemetry`/);
     expect(driver.calls[0].sql).not.toContain('VALUES VALUES');
     expect(driver.calls[0].sql).toContain(
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
     const params = driver.calls[0].params as unknown[];
-    expect(params).toHaveLength(2 * 11);
-    expect(params.slice(0, 11)).toEqual([
+    expect(params).toHaveLength(2 * 12);
+    expect(params.slice(0, 12)).toEqual([
       1_700_000_000_000,
       'node-1',
       'worker',
@@ -107,6 +109,7 @@ describe('TimeSeriesSink telemetría', () => {
       30,
       20,
       0.3,
+      0,
       0,
       1,
       3,

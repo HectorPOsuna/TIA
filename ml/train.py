@@ -19,6 +19,15 @@ def _json_line(value: dict) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _parse_since(value: str) -> int:
+    if value.isdigit():
+        return int(value)
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return int(parsed.timestamp() * 1000)
+
+
 def _print_metrics(metrics: dict) -> None:
     print("==")
     print(
@@ -38,6 +47,12 @@ def main() -> None:
     parser.add_argument("--write-db", action="store_true", help="inserta las alertas en la tabla events")
     parser.add_argument("--no-ollama", action="store_true", help="salta la explicación con Ollama")
     parser.add_argument("--limit", type=int, default=None, help="límite de filas de telemetría a exportar")
+    parser.add_argument(
+        "--since",
+        type=_parse_since,
+        default=None,
+        help="solo telemetría desde una fecha ISO 8601 o epoch en ms",
+    )
     parser.add_argument("--snapshot", type=Path, default=None, help="ruta del CSV de snapshot")
     args = parser.parse_args()
 
@@ -48,13 +63,15 @@ def main() -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
 
     with Database(settings) as database:
-        telemetry = export_telemetry(database, limit=args.limit)
+        telemetry = export_telemetry(database, limit=args.limit, since_ms=args.since)
         if telemetry.empty:
             raise SystemExit("No hay telemetría en la BD; ejecuta el backend primero")
         snapshot_path = args.snapshot or data_dir / "telemetry.csv"
         write_csv(telemetry, snapshot_path)
 
     print(f"Telemetría exportada: {len(telemetry)} filas, {telemetry['node_id'].nunique()} nodos")
+    if args.since is not None:
+        print(f"Filtro temporal: desde {args.since} (epoch ms)")
     matrix, labels, meta = build_features(telemetry, horizon_ms=settings.ml_horizon_ms)
     if matrix.empty:
         raise SystemExit("Datos insuficientes tras el feature engineering (ventana de lags)")

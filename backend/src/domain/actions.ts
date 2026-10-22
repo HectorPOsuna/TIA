@@ -18,7 +18,7 @@ import type { SimNode } from './node.js';
 export interface ActionLogger {
   log(
     level: 'info' | 'warning' | 'critical',
-    type: 'rule' | 'node' | 'task' | 'alert',
+    type: 'rule' | 'node' | 'task' | 'ai' | 'alert',
     message: string,
     nodeId?: string,
     meta?: Record<string, unknown>,
@@ -148,9 +148,20 @@ export function runAction(
       logger.log('info', 'node', `Carga reducida en ${node.id}`, node.id, { action, by });
       break;
     }
+    case 'set_workload': {
+      const value = Math.min(1, Math.max(0, numParam(params, 'value', node.workload)));
+      node.workload = value;
+      node.pushEvent('change', `Carga de ${node.id} ajustada a ${value.toFixed(2)}`);
+      logger.log('info', 'node', `Carga de ${node.id} ajustada a ${value.toFixed(2)}`, node.id, {
+        action,
+        value,
+      });
+      break;
+    }
     case 'set_target_temperature': {
       const target = numParam(params, 'target', node.targetTemp);
       node.targetTemp = target;
+      node.aiTargetOffset = 0;
       node.pushEvent('change', `Objetivo de ${node.id} ajustado a ${target}C`);
       logger.log('info', 'node', `Objetivo de temperatura de ${node.id} ajustado a ${target}C`, node.id, {
         action,

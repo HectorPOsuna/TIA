@@ -2,6 +2,7 @@ import type { NodeDto, TaskDto } from '../domain/types.js';
 import { STATUS_CODE } from '../domain/types.js';
 import type { EventBus } from '../engine/eventBus.js';
 import type {
+  AiActionPayload,
   AlertPayload,
   InferencePayload,
   RuleTriggeredPayload,
@@ -86,6 +87,24 @@ export class TimeSeriesSink {
     bus.on('inference:completed', (payload: InferencePayload) => {
       this.pushInference(payload);
     });
+    bus.on('ai:action', (payload: AiActionPayload) => {
+      this.pushEvent(
+        payload.at,
+        payload.nodeId,
+        'ai_action',
+        'ai',
+        payload.action,
+        `${payload.action}: ${payload.reason}`,
+        {
+          predictedTemp: payload.predictedTemp,
+          actualTemp: payload.actualTemp,
+          baseTarget: payload.baseTarget,
+          targetTemp: payload.targetTemp,
+          offset: payload.offset,
+          params: payload.params ?? null,
+        },
+      );
+    });
   }
 
   private pushInference(payload: InferencePayload): void {
@@ -117,9 +136,10 @@ export class TimeSeriesSink {
       node_id: node.id,
       node_type: node.type,
       current_temp: node.currentTemp,
-      target_temp: node.targetTemp,
+      target_temp: node.targetTemp + node.aiTargetOffset,
       ambient_temp: node.ambientTemp,
       workload: node.workload,
+      task_heat: node.taskHeat,
       status: STATUS_CODE[node.status],
       fan_active: node.fanActive ? 1 : 0,
       queue_length: node.queue.size,
@@ -141,7 +161,7 @@ export class TimeSeriesSink {
     ts: number,
     nodeId: string | undefined,
     kind: string,
-    type: 'rule' | 'task' | 'alert' | 'inference',
+    type: 'rule' | 'task' | 'alert' | 'inference' | 'ai',
     label: string,
     message: string,
     meta: Record<string, unknown> | null,
