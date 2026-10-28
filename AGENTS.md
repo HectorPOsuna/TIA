@@ -46,6 +46,8 @@ Env en `backend/.env` (ver `backend/.env.example`): `PORT`, `TICK_MS`, `INITIAL_
 ## Commits
 Todos en español, imperativo: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. Nunca commitees artefactos de build (`node_modules/`, `dist/`, `.pio/` — ignorados).
 
+Segmenta por bloque funcional auditable, no por archivo ni por capa. Cada commit debe compilar y pasar tests por sí solo. Los tests van con la funcionalidad que cubren; bug fixes, refactors y docs van en commits separados. Usa scope (`feat(backend): ...`, `feat(frontend): ...`).
+
 ## Changelog
 - `CHANGELOG.md` (raíz) se genera con `commit-and-tag-version` (config `.versionrc.json` de la raíz: header WAItt, secciones en español, URLs `HectorPOsuna/TIA`). No se edita a mano excepto limpieza histórica puntual.
 - Los flags NO se reenvían con `pnpm.cmd run`: `release -- --first-release` descarta `--first-release` y puede bumpar mal la versión (incidente real: bumped a 1.1.0). Con flags usa `pnpm.cmd exec commit-and-tag-version --config ../.versionrc.json <flags>` (p. ej. `--first-release` o `--skip.commit --skip.tag` para regenerar sin commit/tag).
