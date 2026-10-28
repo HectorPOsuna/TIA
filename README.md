@@ -119,16 +119,20 @@ al modelo representar el enfriamiento por tareas y los nodos inactivos.
 
 ## Frontend
 
-Dashboard de control con **vista cenital 3D** (Three.js + React Three Fiber) sobre una rejilla
-automática: cada nodo es una cabina extruida cuyo color y altura reflejan su temperatura respecto
-al objetivo; al hacer clic abre el panel de controles en la barra lateral (objetivo ±5°, ventilador,
-encolar tarea, tendencia, cola y pila LIFO). La barra lateral agrupa, en secciones colapsables, el
-nodo seleccionado, el **modelo IA** (versión, horizonte, predicción por nodo a 15 s y recomendación
-estable/enfriar/subir carga), el **control IA** (interruptor, acciones permitidas y feed de decisiones),
-la **eficiencia** (nodos en banda ±2 °C, desvío medio, sesión en banda, ventiladores, carga y pool, con
-sparklines de la sesión), la cola global (pool), las reglas reactivas (con sus últimos disparos) y las
-alertas. Los últimos **600 estados** de la sesión se guardan en el navegador y permiten **replay** del
-mapa térmico con línea de tiempo y reproducción automática.
+Escaparate inmersivo con la **escena cenital 3D** (Three.js + React Three Fiber) a pantalla completa:
+cada nodo es una cabina extruida cuyo color y altura reflejan su temperatura respecto al objetivo y
+la etiqueta 3D muestra temperatura, ventilador, cola y pila. Un **HUD flotante** resume estado,
+media, nodos activos, errores, IA y objetivo; el **dock de nodos** (flechas, Home y End) y la propia
+escena seleccionan un nodo, que abre un **drawer** de detalle (objetivo ±5°, ventilador, encolar
+tarea, tendencia, cola y pila LIFO). El **centro de control** es un `<dialog>` con pestañas **IA**
+(modelo, predicción a 15 s y recomendación), **Automatización** (control IA, reglas, pool y
+eficiencia con sparklines), **Sistema** y **Alertas**; las alertas también aparecen como toasts.
+
+Los últimos **600 estados** de la sesión se guardan en el navegador y alimentan el **replay** con
+línea de tiempo, reproducción automática y navegación paso a paso. Durante el replay la escena y el
+drawer son de solo lectura y la configuración del centro de control queda deshabilitada. El layout
+pasa a una columna en retrato y el drawer se convierte en hoja inferior; la escena respeta
+`prefers-reduced-motion`.
 
 ```bash
 cd frontend
