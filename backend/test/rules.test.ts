@@ -103,6 +103,27 @@ describe('evaluación de reglas reactivas', () => {
     node.status = 'error';
     expect(metricValue(node, 'status')).toBe(2);
   });
+
+  it('usa la temperatura prevista y su delta respecto al objetivo', () => {
+    const system = new SystemSimulation(seed);
+    const node = system.getNode('node-1')!;
+    node.currentTemp = 30;
+    node.targetTemp = 30;
+
+    const predictedTemp = makeRule({ metric: 'predictedTemperature', op: '>', value: 35 });
+    expect(evaluateRule(predictedTemp, system, () => 36).triggered).toBe(true);
+
+    const predictedDelta = makeRule({ metric: 'predictedDelta', op: '>', value: 1 });
+    expect(evaluateRule(predictedDelta, system, () => 32).triggered).toBe(true);
+  });
+
+  it('no dispara métricas predictivas sin predicción ni con NaN', () => {
+    const system = new SystemSimulation(seed);
+    const rule = makeRule({ metric: 'predictedTemperature', op: '!=', value: 30 });
+    expect(evaluateRule(rule, system).triggered).toBe(false);
+    expect(evaluateRule(rule, system, () => Number.NaN).triggered).toBe(false);
+    expect(evaluateRule(rule, system, () => 31).triggered).toBe(true);
+  });
 });
 
 describe('RuleStore', () => {

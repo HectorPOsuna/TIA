@@ -8,12 +8,18 @@ import type {
 import type { SimNode } from './node.js';
 import type { SystemSimulation } from './system.js';
 
-export function metricValue(node: SimNode, metric: RuleMetric): number {
+export type PredictionLookup = (nodeId: string) => number | undefined;
+
+export function metricValue(node: SimNode, metric: RuleMetric, predictedTemp?: number): number {
   switch (metric) {
     case 'temperature':
       return node.currentTemp;
     case 'temperatureDelta':
       return node.currentTemp - node.targetTemp;
+    case 'predictedTemperature':
+      return predictedTemp ?? Number.NaN;
+    case 'predictedDelta':
+      return predictedTemp === undefined ? Number.NaN : predictedTemp - node.targetTemp;
     case 'workload':
       return node.workload;
     case 'status':
@@ -63,15 +69,20 @@ export function matchTargetNodes(rule: Pick<Rule, 'subject' | 'nodeId'>, system:
   }
 }
 
-export function evaluateRule(rule: Rule, system: SystemSimulation): { triggered: boolean; nodes: SimNode[] } {
+export function evaluateRule(
+  rule: Rule,
+  system: SystemSimulation,
+  predictedTempFor?: PredictionLookup,
+): { triggered: boolean; nodes: SimNode[] } {
   const candidates = matchTargetNodes(rule, system);
   if (candidates.length === 0) {
     return { triggered: false, nodes: [] };
   }
 
-  const matched = candidates.filter((n) =>
-    compareValues(metricValue(n, rule.metric), rule.op, rule.value),
-  );
+  const matched = candidates.filter((n) => {
+    const value = metricValue(n, rule.metric, predictedTempFor?.(n.id));
+    return Number.isFinite(value) && compareValues(value, rule.op, rule.value);
+  });
 
   if (rule.subject === 'all') {
     return { triggered: matched.length === candidates.length, nodes: matched };

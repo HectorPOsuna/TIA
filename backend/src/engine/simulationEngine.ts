@@ -15,11 +15,18 @@ export interface EngineDeps {
 }
 
 const MAX_DT_MS = 5000;
+const PREDICTION_TTL_MS = 60_000;
+
+interface PredictionSample {
+  predictedTemp: number;
+  at: number;
+}
 
 export class SimulationEngine {
   private timer: NodeJS.Timeout | null = null;
   private lastTickAt: number;
   private tickCount = 0;
+  private readonly predictions = new Map<string, PredictionSample>();
 
   constructor(
     private readonly deps: EngineDeps,
@@ -27,6 +34,9 @@ export class SimulationEngine {
     private readonly telemetryLogEvery = 0,
   ) {
     this.lastTickAt = Date.now();
+    this.deps.bus.on('inference:completed', (payload) => {
+      this.predictions.set(payload.nodeId, { predictedTemp: payload.predictedTemp, at: payload.at });
+    });
   }
 
   get running(): boolean {
@@ -189,6 +199,18 @@ export class SimulationEngine {
     }
   }
 
+  private predictedTempFor(nodeId: string): number | undefined {
+    const sample = this.predictions.get(nodeId);
+    if (sample === undefined) {
+      return undefined;
+    }
+    if (Date.now() - sample.at > PREDICTION_TTL_MS) {
+      this.predictions.delete(nodeId);
+      return undefined;
+    }
+    return sample.predictedTemp;
+  }
+
   private evaluateRules(): void {
     const { rules, system, bus, logs } = this.deps;
     const now = Date.now();
@@ -198,7 +220,9 @@ export class SimulationEngine {
         continue;
       }
 
-      const { triggered, nodes } = evaluateRule(rule, system);
+      const { triggered, nodes } = evaluateRule(rule, system, (nodeId) =>
+        this.predictedTempFor(nodeId),
+      );
       if (!triggered) {
         continue;
       }

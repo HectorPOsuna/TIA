@@ -141,6 +141,8 @@ export interface LogEntry {
 export type RuleMetric =
   | 'temperature'
   | 'temperatureDelta'
+  | 'predictedTemperature'
+  | 'predictedDelta'
   | 'workload'
   | 'status'
   | 'queueLength'
@@ -149,6 +151,8 @@ export type RuleMetric =
 export const RULE_METRIC_VALUES = [
   'temperature',
   'temperatureDelta',
+  'predictedTemperature',
+  'predictedDelta',
   'workload',
   'status',
   'queueLength',

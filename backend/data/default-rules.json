@@ -13,6 +13,19 @@
     }
   },
   {
+    "name": "Ventilador por predicción alta",
+    "enabled": true,
+    "cooldownMs": 30000,
+    "subject": "any",
+    "metric": "predictedDelta",
+    "op": ">",
+    "value": 1.5,
+    "action": "fan_on",
+    "actionParams": {
+      "minutes": 2
+    }
+  },
+  {
     "name": "Reducir carga por temperatura",
     "enabled": true,
     "cooldownMs": 45000,
