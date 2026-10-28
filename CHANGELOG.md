@@ -3,6 +3,23 @@
 Todas las notas significativas de los cambios de WAItt se documentan en este archivo.
 
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
+## [1.6.0](https://github.com/HectorPOsuna/TIA/compare/v1.5.0...v1.6.0) (2026-10-28)
+
+### Añadido
+
+* **backend:** añade métricas predictivas a las reglas ([cda4cc4](https://github.com/HectorPOsuna/TIA/commit/cda4cc44db7bd0ee3ea775e630847f083e6700a1))
+* **backend:** registra el resultado de las acciones de reglas ([e1a6d72](https://github.com/HectorPOsuna/TIA/commit/e1a6d7296a85cca9520e0864f1c6a0ca3cb9cfa0))
+* **frontend:** muestra el resultado de las reglas disparadas ([45cdc8b](https://github.com/HectorPOsuna/TIA/commit/45cdc8b323729a4b65a206a4c2dbd7ce489f29a7))
+
+### Corregido
+
+* **backend:** propaga las capacidades de cola a los workers ([3eac4e2](https://github.com/HectorPOsuna/TIA/commit/3eac4e2d744c080d2a32c430d353c3a1c48c195e))
+
+### Documentación
+
+* documenta las reglas reactivas con inferencia ([142333c](https://github.com/HectorPOsuna/TIA/commit/142333cb9c1e4badbdd33eaaed13a575ca2ed2cb))
+* segmenta los commits por bloque funcional ([a17616d](https://github.com/HectorPOsuna/TIA/commit/a17616de316783311b64a5e9ba58fe3abe45b39f))
+
 ## [1.5.0](https://github.com/HectorPOsuna/TIA/compare/v1.4.0...v1.5.0) (2026-10-22)
 
 ### Añadido
