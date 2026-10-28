@@ -1,24 +1,22 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRules } from './hooks/useRules.js'
 import { useSimulation } from './hooks/useSimulation.js'
 import { useHistory } from './hooks/useHistory.js'
 import { useInference } from './hooks/useInference.js'
 import { useAiControl } from './hooks/useAiControl.js'
-import { Header } from './components/Header.jsx'
-import { SummaryBar } from './components/SummaryBar.jsx'
-import { CollapsiblePanel } from './components/CollapsiblePanel.jsx'
-import { NodeDetailPanel } from './components/NodeDetailPanel.jsx'
-import { ModelPanel } from './components/ModelPanel.jsx'
-import { AiControlPanel } from './components/AiControlPanel.jsx'
-import { EfficiencyPanel } from './components/EfficiencyPanel.jsx'
-import { RulesPanel } from './components/RulesPanel.jsx'
-import { PoolPanel } from './components/PoolPanel.jsx'
-import { AlertsPanel } from './components/AlertsPanel.jsx'
-import { ReplayControls } from './components/ReplayControls.jsx'
+import { useReducedMotion } from './hooks/useReducedMotion.js'
+import { Hud } from './components/Hud.jsx'
+import { NodeDock } from './components/NodeDock.jsx'
+import { NodeDrawer } from './components/NodeDrawer.jsx'
+import { ControlCenter } from './components/ControlCenter.jsx'
+import { ReplayBar } from './components/ReplayBar.jsx'
+import { ToastStack } from './components/ToastStack.jsx'
+import { SceneErrorBoundary } from './components/SceneErrorBoundary.jsx'
 import { Legend } from './three/Legend.jsx'
 import './App.css'
 
 const Scene = lazy(() => import('./three/Scene.jsx').then((m) => ({ default: m.Scene })))
+const ALERT_TOAST_MS = 6000
 
 export default function App() {
   const { snapshot, status, connected, alerts, api } = useSimulation()
@@ -26,18 +24,15 @@ export default function App() {
   const history = useHistory()
   const inference = useInference()
   const aiControl = useAiControl()
+  const reducedMotion = useReducedMotion()
 
   const [selectedId, setSelectedId] = useState(null)
+  const [controlTab, setControlTab] = useState(null)
   const [target, setTarget] = useState('')
-  const [open, setOpen] = useState({
-    detail: true,
-    model: true,
-    ai: true,
-    efficiency: false,
-    rules: false,
-    pool: false,
-    alerts: true,
-  })
+  const [hintVisible, setHintVisible] = useState(true)
+  const [toasts, setToasts] = useState([])
+  const toastTimers = useRef(new Map())
+  const lastAlertKey = useRef(null)
 
   const live = snapshot
   const isReplay = history.isReplay
@@ -46,6 +41,8 @@ export default function App() {
   const pool = effective?.pendingQueue
   const bandHi = effective ? effective.targetTemp + 8 : null
   const bandLo = effective ? effective.targetTemp - 8 : null
+  const nodes = effective ? [effective.general, ...effective.workers] : []
+  const liveNodes = live ? [live.general, ...live.workers] : []
 
   const selectedNode = effective
     ? effective.general.id === selectedId
@@ -61,17 +58,65 @@ export default function App() {
     if (!selectedId) return null
     const values = []
     for (const sample of history.samples) {
-      const snap = sample
       const node =
-        snap.general.id === selectedId
-          ? snap.general
-          : snap.workers.find((w) => w.id === selectedId)
+        sample.general.id === selectedId
+          ? sample.general
+          : sample.workers.find((w) => w.id === selectedId)
       if (node) values.push(node.currentTemp)
     }
     return values
   }, [selectedId, history.samples])
 
-  const toggle = (key) => setOpen((prev) => ({ ...prev, [key]: !prev[key] }))
+  const selectNode = (id) => {
+    setSelectedId(id)
+    setHintVisible(false)
+  }
+
+  const closeDrawer = useCallback(() => setSelectedId(null), [])
+  const closeControl = useCallback(() => setControlTab(null), [])
+
+  const dismissToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id))
+    const timer = toastTimers.current.get(id)
+    if (timer) {
+      clearTimeout(timer)
+      toastTimers.current.delete(id)
+    }
+  }, [])
+
+  const pushToast = useCallback((alert) => {
+    const id = `${alert.at ?? alert.ts}-${Math.random().toString(36).slice(2, 8)}`
+    setToasts((prev) => [...prev.slice(-2), { ...alert, id }])
+    const timer = setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id))
+      toastTimers.current.delete(id)
+    }, ALERT_TOAST_MS)
+    toastTimers.current.set(id, timer)
+  }, [])
+
+  useEffect(() => {
+    const timers = toastTimers.current
+    return () => {
+      timers.forEach(clearTimeout)
+      timers.clear()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isReplay) return
+    const newest = alerts[0]
+    if (!newest) return
+    const key = `${newest.at ?? newest.ts ?? ''}-${newest.message ?? ''}-${newest.nodeId ?? ''}`
+    if (key === lastAlertKey.current) return
+    lastAlertKey.current = key
+    pushToast(newest)
+  }, [alerts, isReplay, pushToast])
+
+  useEffect(() => {
+    if (!hintVisible || selectedId) return undefined
+    const id = setTimeout(() => setHintVisible(false), 9000)
+    return () => clearTimeout(id)
+  }, [hintVisible, selectedId])
 
   const applyTarget = () => {
     if (target === '') return
@@ -81,159 +126,118 @@ export default function App() {
 
   return (
     <div className="app">
-      <Header
-        connected={connected}
-        running={running}
-        isReplay={isReplay}
-        target={target}
-        onTarget={setTarget}
-        onApplyTarget={applyTarget}
-        onToggleRunning={() => (running ? api.pause() : api.resume())}
-        onReset={() => api.reset()}
-      />
+      <div className="stage">
+        <main className="scene-col">
+          <div className="scene-canvas">
+            {effective ? (
+              <SceneErrorBoundary>
+                <Suspense
+                  fallback={
+                    <div className="scene-loading" role="status">
+                      Cargando escena 3D…
+                    </div>
+                  }
+                >
+                  <div className="scene-canvas__3d" aria-hidden="true">
+                    <Scene
+                      snapshot={effective}
+                      bandLo={bandLo}
+                      bandHi={bandHi}
+                      selectedId={selectedId}
+                      onSelect={selectNode}
+                      reducedMotion={reducedMotion}
+                    />
+                  </div>
+                </Suspense>
+              </SceneErrorBoundary>
+            ) : (
+              <div className="scene-empty" role="status">
+                <span className="scene-empty__eyebrow">WAItt control</span>
+                <strong>Esperando datos del simulador…</strong>
+                <span>Arranca el backend en el puerto 3000 y vuelve a cargar la página.</span>
+              </div>
+            )}
+          </div>
 
-      <div className="layout">
-        <main className="scene-wrap">
-          {effective ? (
-            <>
-              <div className="scene-overlay scene-overlay--tl">
-                <SummaryBar
-                  summary={effective.summary}
-                  targetTemp={effective.targetTemp}
-                  ambientTemp={effective.ambientTemp}
-                />
-              </div>
-              <Suspense fallback={null}>
-                <Scene
-                  snapshot={effective}
-                  bandLo={bandLo}
-                  bandHi={bandHi}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                />
-              </Suspense>
-              <div className="scene-overlay scene-overlay--br">
-                <Legend lo={bandLo} hi={bandHi} />
-                <ReplayControls
-                  samples={history.samples}
-                  replayIndex={history.replayIndex}
-                  isReplay={history.isReplay}
-                  onGo={history.goTo}
-                  onLive={history.live}
-                  onStep={history.step}
-                />
-              </div>
-            </>
-          ) : (
-            <div className="scene-empty">
-              <strong>Esperando datos del simulador…</strong>
-              <div>Arranca el backend (puerto 3000) y vuelve a cargar la página.</div>
+          <Hud
+            connected={connected}
+            running={running}
+            isReplay={isReplay}
+            summary={effective?.summary}
+            targetTemp={effective?.targetTemp}
+            target={target}
+            onTarget={setTarget}
+            onApplyTarget={applyTarget}
+            onToggleRunning={() => (running ? api.pause() : api.resume())}
+            onOpenControl={(tab) => setControlTab(tab)}
+            alertCount={alerts.length}
+            aiState={aiControl.status}
+          />
+
+          {effective && (
+            <NodeDock nodes={nodes} selectedId={selectedId} onSelect={selectNode} />
+          )}
+
+          {effective && bandLo != null && (
+            <div className="scene-overlay scene-overlay--bl">
+              <Legend lo={bandLo} hi={bandHi} />
             </div>
           )}
+
+          {effective && (
+            <div className="scene-overlay scene-overlay--bc">
+              <ReplayBar
+                samples={history.samples}
+                replayIndex={history.replayIndex}
+                isReplay={history.isReplay}
+                onGo={history.goTo}
+                onLive={history.live}
+                onStep={history.step}
+              />
+            </div>
+          )}
+
+          {effective && !selectedId && hintVisible && (
+            <div className="scene-hint" role="status">
+              Haz clic en un nodo o usa la lista para ver su detalle
+            </div>
+          )}
+
+          {!isReplay && <ToastStack toasts={toasts} onDismiss={dismissToast} />}
         </main>
 
-        <aside className="rail">
-          <CollapsiblePanel
-            title="Nodo seleccionado"
-            meta={selectedNode ? selectedNode.name.toUpperCase() : '—'}
-            open={open.detail}
-            onToggle={() => toggle('detail')}
-          >
-            <NodeDetailPanel
-              node={selectedNode}
-              series={series}
-              api={api}
-              inference={!isReplay && selectedId ? inference.latest[selectedId] : undefined}
-              aiNode={!isReplay ? selectedAi : null}
-            />
-          </CollapsiblePanel>
-
-          <CollapsiblePanel
-            title="Modelo IA"
-            meta={
-              inference.enabled === false
-                ? 'off'
-                : inference.version
-                  ? inference.version.replace('sha256:', '')
-                  : null
-            }
-            open={open.model}
-            onToggle={() => toggle('model')}
-          >
-            <ModelPanel
-              latest={inference.latest}
-              version={inference.version}
-              meta={inference.meta}
-              enabled={inference.enabled}
-              stats={inference.stats}
-              nodes={live ? [live.general, ...live.workers] : []}
-              aiNodes={aiControl.status?.nodes ?? []}
-            />
-          </CollapsiblePanel>
-
-          <CollapsiblePanel
-            title="Control IA"
-            meta={
-              aiControl.status?.available === false
-                ? 'n/a'
-                : aiControl.status?.enabled
-                  ? 'auto'
-                  : 'off'
-            }
-            open={open.ai}
-            onToggle={() => toggle('ai')}
-          >
-            <AiControlPanel
-              status={aiControl.status}
-              recent={aiControl.recent}
-              error={aiControl.error}
-              busy={aiControl.busy}
-              onEnabled={aiControl.setEnabled}
-              onPolicy={aiControl.setPolicy}
-            />
-          </CollapsiblePanel>
-
-          <CollapsiblePanel
-            title="Eficiencia"
-            meta="±2 °C"
-            open={open.efficiency}
-            onToggle={() => toggle('efficiency')}
-          >
-            <EfficiencyPanel
-              snapshot={effective}
-              samples={history.samples}
-              inference={inference.latest}
-            />
-          </CollapsiblePanel>
-
-          <CollapsiblePanel
-            title="Cola global"
-            meta={pool ? `${pool.size}/${pool.capacity}` : null}
-            open={open.pool}
-            onToggle={() => toggle('pool')}
-          >
-            <PoolPanel pool={pool} api={api} />
-          </CollapsiblePanel>
-
-          <CollapsiblePanel
-            title="Reglas reactivas"
-            meta={rules.length}
-            open={open.rules}
-            onToggle={() => toggle('rules')}
-          >
-            <RulesPanel rules={rules} triggered={triggered} api={rulesApi} />
-          </CollapsiblePanel>
-
-          <CollapsiblePanel
-            title="Alertas"
-            meta={alerts.length}
-            open={open.alerts}
-            onToggle={() => toggle('alerts')}
-          >
-            <AlertsPanel alerts={alerts} />
-          </CollapsiblePanel>
-        </aside>
+        {selectedNode && (
+          <NodeDrawer
+            node={selectedNode}
+            series={series}
+            api={api}
+            inference={!isReplay && selectedId ? inference.latest[selectedId] : undefined}
+            aiNode={!isReplay ? selectedAi : null}
+            readOnly={isReplay}
+            onClose={closeDrawer}
+          />
+        )}
       </div>
+
+      {controlTab && (
+        <ControlCenter
+          tab={controlTab}
+          onTab={setControlTab}
+          onClose={closeControl}
+          readOnly={isReplay}
+          rules={rules}
+          triggered={triggered}
+          rulesApi={rulesApi}
+          pool={pool}
+          api={api}
+          aiControl={aiControl}
+          inference={inference}
+          liveNodes={liveNodes}
+          alerts={alerts}
+          effective={effective}
+          samples={history.samples}
+        />
+      )}
     </div>
   )
 }

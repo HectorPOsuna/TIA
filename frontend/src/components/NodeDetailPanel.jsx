@@ -14,7 +14,7 @@ const AI_ACTION = {
   startup: 'encendido',
 }
 
-export function NodeDetailPanel({ node, series, api, inference, aiNode }) {
+export function NodeDetailPanel({ node, series, api, inference, aiNode, readOnly = false }) {
   if (!node) {
     return (
       <div className="detail__none">Selecciona un nodo en el plano 3D para ver sus controles.</div>
@@ -31,7 +31,12 @@ export function NodeDetailPanel({ node, series, api, inference, aiNode }) {
     <div>
       <div className="detail__head">
         <div>
-          <strong style={{ textTransform: 'uppercase', letterSpacing: '0.08em' }}>{node.name}</strong>
+          <strong
+            id="node-drawer-title"
+            style={{ textTransform: 'uppercase', letterSpacing: '0.08em' }}
+          >
+            {node.name}
+          </strong>
           <div className="dim mono" style={{ fontSize: 12 }}>
             {node.id} · {node.type}
           </div>
@@ -60,29 +65,31 @@ export function NodeDetailPanel({ node, series, api, inference, aiNode }) {
         </div>
       )}
 
-      <div className="detail__actions">
-        <button
-          type="button"
-          className="btn btn--sm"
-          onClick={() => patchNode(node.id, { targetTemp: node.targetTemp - 5 })}
-        >
-          -5°
-        </button>
-        <button
-          type="button"
-          className="btn btn--sm"
-          onClick={() => patchNode(node.id, { targetTemp: node.targetTemp + 5 })}
-        >
-          +5°
-        </button>
-        <button
-          type="button"
-          className={`btn btn--sm ${node.fanActive ? 'btn--primary' : ''}`}
-          onClick={() => patchNode(node.id, { fanActive: !node.fanActive })}
-        >
-          Ventilador {node.fanActive ? 'on' : 'off'}
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="detail__actions">
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={() => patchNode(node.id, { targetTemp: node.targetTemp - 5 })}
+          >
+            -5°
+          </button>
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={() => patchNode(node.id, { targetTemp: node.targetTemp + 5 })}
+          >
+            +5°
+          </button>
+          <button
+            type="button"
+            className={`btn btn--sm ${node.fanActive ? 'btn--primary' : ''}`}
+            onClick={() => patchNode(node.id, { fanActive: !node.fanActive })}
+          >
+            Ventilador {node.fanActive ? 'on' : 'off'}
+          </button>
+        </div>
+      )}
 
       <div className="detail__grid">
         <div className="detail__metric">
@@ -178,18 +185,20 @@ export function NodeDetailPanel({ node, series, api, inference, aiNode }) {
         </div>
       )}
 
-      <TaskForm
-        submitLabel="Encolar tarea"
-        onSubmit={(p) =>
-          enqueue(node.id, {
-            type: 'cooldown',
-            description: 'Manual',
-            priority: p.priority,
-            computeDemand: p.demand,
-            durationSecs: p.duration,
-          })
-        }
-      />
+      {!readOnly && (
+        <TaskForm
+          submitLabel="Encolar tarea"
+          onSubmit={(p) =>
+            enqueue(node.id, {
+              type: 'cooldown',
+              description: 'Manual',
+              priority: p.priority,
+              computeDemand: p.demand,
+              durationSecs: p.duration,
+            })
+          }
+        />
+      )}
 
       {series && series.length >= 2 && (
         <div style={{ marginTop: 12 }}>
