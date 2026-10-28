@@ -22,7 +22,7 @@ Ver [backend/README.md](backend/README.md) para API REST, eventos WebSocket, mod
 cd backend
 pnpm.cmd install
 pnpm.cmd dev        # http://localhost:3000
-pnpm.cmd run test   # 76 tests vitest
+pnpm.cmd run test   # 86 tests vitest
 pnpm.cmd run build
 ```
 
@@ -67,6 +67,19 @@ Cambios asociados del simulador: las tareas `cooldown` **restan calor** mientras
 nodos apagados **disipan hacia el ambiente**, y `set_workload` permite fijar la carga. La telemetría
 expone `task_heat` para que el modelo aprenda el efecto térmico de cada tarea. Configuración en
 `AI_CONTROL_*` (ver `backend/.env.example`).
+
+### Reglas reactivas con predicción (S9)
+
+Las reglas hot-editables pueden usar la última inferencia de cada nodo además de la temperatura
+actual. Métricas nuevas: `predictedTemperature` (temperatura prevista) y `predictedDelta`
+(predicha − objetivo base). La predicción vale 60 s; sin predicción fresca, la regla no dispara.
+La semilla incluye «Ventilador por predicción alta» (`predictedDelta > 1.5` → `fan_on`, cooldown
+30 s).
+
+Cada `rule:triggered` registra `action`, `applied`, `reason?`, `taskId?` y `predictedTemp?`, y la
+telemetría los persiste en `events` (`kind=rule`). Así se audita no solo que la regla se disparó,
+sino si la acción tuvo efecto. El CRUD sigue por API (`/api/rules`); el panel muestra los últimos
+disparos con su resultado.
 
 ## Base de datos (BD time-series)
 

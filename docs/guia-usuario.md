@@ -116,13 +116,15 @@ La sección **Cola de prioridad global** muestra el pool central de tareas pendi
 
 ### Reglas reactivas
 
-La sección **Reglas reactivas** lista las reglas automáticas cargadas. Cada regla indica: nombre, a qué nodos afecta (`any`, `all`, `system`, `node`), la condición (`metric op value`, por ejemplo `temperature > 55`) y la acción que ejecuta. También muestra cuántas veces se ha disparado y si está **activa** o **desactivada**.
+La sección **Reglas reactivas** lista las reglas automáticas cargadas. Cada regla indica: nombre, a qué nodos afecta (`any`, `all`, `system`, `node`), la condición (`metric op value`, por ejemplo `temperature > 55` o `predictedDelta > 1.5`) y la acción que ejecuta. También muestra cuántas veces se ha disparado y si está **activa** o **desactivada**.
+
+Las métricas `predictedTemperature` y `predictedDelta` usan la última predicción del modelo IA de cada nodo (válida durante 60 s). Permiten reaccionar **antes** de que la temperatura suba: la regla por defecto «Ventilador por predicción alta» enciende el ventilador cuando la temperatura prevista supera el objetivo en más de 1.5 °C.
 
 Desde la interfaz puedes:
 - **Activar/Desactivar** una regla (se aplica en vivo, sin reiniciar).
 - **Eliminar** una regla con el botón **✕**.
 
-La lista de **Últimos disparos** muestra las últimas reglas que se activaron y sobre qué nodos.
+La lista de **Últimos disparos** muestra las últimas reglas que se activaron, sobre qué nodos, qué acción ejecutaron y si se aplicó. Si una acción no tuvo efecto (por ejemplo, cola llena), el disparo aparece como **no aplicada** con el motivo.
 
 ### Alertas
 
@@ -177,6 +179,8 @@ Los cambios se aplican en vivo, sin reiniciar nada. Para que sean permanentes, a
 
 > **Nota**: una regla tiene un "enfriamiento" (`cooldownMs`) para no dispararse repetidamente; si la condición sigue cumpliéndose, esperará ese intervalo antes de volver a actuar.
 
+Para actuar sobre la predicción, usa `predictedTemperature` o `predictedDelta` como `metric`. Ejemplo: encender el ventilador si la temperatura prevista supera el objetivo en 1.5 °C.
+
 ## Cómo interpretar el log de eventos
 
 Cada acción relevante queda registrada en el buffer de logs del backend (se consulta con `GET /api/logs`). Ejemplos de entradas que verás:
@@ -184,7 +188,7 @@ Cada acción relevante queda registrada en el buffer de logs del backend (se con
 - `Simulación iniciada (tick cada 1000 ms)` — arranque del motor.
 - `Simulación en pausa` / `Simulación reanudada` — cambios de estado.
 - `Tarea encolada (cooldown) en node-1` / `Tarea completada: ... en node-1` — vida de las tareas.
-- `Regla "Ventilador por temperatura alta" disparada en node-1 → acción fan_on` — reglas ejecutadas.
+- `Regla "Ventilador por temperatura alta" disparada en node-1 → acción fan_on` — reglas ejecutadas. Si la acción no se aplica, el mensaje añade `(no aplicada: <motivo>)`.
 - `Pool → tarea p5 (Enfriamiento programado por regla) asignada a node-2` — reparto de tareas del pool global.
 - `Ventilador activado en node-1` / `Nodo node-1 apagado` — efectos de las acciones.
 

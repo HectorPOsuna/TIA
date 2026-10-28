@@ -185,18 +185,19 @@ Una regla tiene el formato:
   "cooldownMs": 30000,
   "subject": "any | all | system | node",
   "nodeId": "node-1",
-  "metric": "temperature | status",
+  "metric": "temperature | temperatureDelta | predictedTemperature | predictedDelta | workload | status | queueLength | stackLength",
   "op": "> | < | >= | <= | == | !=",
   "value": 55,
-  "action": "fan_on | fan_off | shutdown | startup | enqueue_task | send_alert | reduce_load | set_target_temperature",
+  "action": "fan_on | fan_off | shutdown | startup | enqueue_task | send_alert | reduce_load | set_workload | set_target_temperature",
   "actionParams": { "minutes": 2 }
 }
 ```
 
 Por defecto `enabled=true`, `cooldownMs=30000`, `subject='any'`. Con `subject=node` es
-obligatorio `nodeId`. `status` numérico: `0` activo, `1` inactivo, `2` en error. Los
-cambios se aplican en vivo: el motor re-carga las reglas cada tick (no hay reinicio), y se
-persisten en `RULES_FILE` al crear/editar/eliminar por API.
+obligatorio `nodeId`. `status` numérico: `0` activo, `1` inactivo, `2` en error. Las métricas
+predictivas usan la última `inference:completed` del nodo (TTL 60 s); sin predicción fresca, la
+regla no dispara. Los cambios se aplican en vivo: el motor re-carga las reglas cada tick (no hay
+reinicio), y se persisten en `RULES_FILE` al crear/editar/eliminar por API.
 
 ### Logs — `/api/logs`
 
@@ -233,7 +234,7 @@ Conecta `io("http://localhost:3000")`. Todos los paquetes llegan como
 |---|---|
 | `state:update` | Snapshot completo del sistema |
 | `node:updated` | `{ nodeId, node }` |
-| `rule:triggered` | `{ ruleId, ruleName, nodeIds }` |
+| `rule:triggered` | `{ rule, nodeId?, action, applied, reason?, taskId?, predictedTemp?, at }` |
 | `task:queued` / `task:completed` | `{ nodeId, task }` |
 | `task:pending` | `{ task }` (entra al pool global) |
 | `alert` | `{ nodeId, message, level }` |

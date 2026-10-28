@@ -125,7 +125,10 @@ interface Rule {
   enabled: boolean; cooldownMs: number;
   subject: 'any' | 'all' | 'system' | 'node';
   nodeId?: string;
-  metric: 'temperature' | 'temperatureDelta' | 'workload' | 'status' | 'queueLength' | 'stackLength';
+  metric:
+    | 'temperature' | 'temperatureDelta'
+    | 'predictedTemperature' | 'predictedDelta'
+    | 'workload' | 'status' | 'queueLength' | 'stackLength';
   op: '>' | '>=' | '<' | '<=' | '==' | '!=';
   value: number;
   action: ActionType;
@@ -136,7 +139,8 @@ interface Rule {
 
 - `matchTargetNodes`: `system` → solo `node-general`; `node` → un nodo concreto (requiere `nodeId`); `any`/`all` → todos los workers.
 - `all` exige que TODOS los candidatos cumplan; `any` basta con uno.
-- `metricValue`: `status` se compara numérico (`active=0`, `inactive=1`, `error=2`); `temperatureDelta` = `currentTemp - targetTemp`.
+- `metricValue`: `status` se compara numérico (`active=0`, `inactive=1`, `error=2`); `temperatureDelta` = `currentTemp - targetTemp`; `predictedTemperature` es la última predicción del nodo y `predictedDelta` = `predictedTemp - targetTemp` (objetivo base, sin `aiTargetOffset`).
+- Las métricas predictivas solo existen si hay una `inference:completed` de ese nodo con antigüedad menor a `PREDICTION_TTL_MS` (60 s). Sin predicción, `NaN` o una predicción más vieja, la regla no dispara (la comparación se descarta antes de evaluar).
 
 ### Acciones (`actions.ts`)
 
@@ -158,7 +162,7 @@ interface Rule {
 - Orden del tick (`step(dtMs)`):
   1. `system.tickThermalAll(dtMs)` — térmica de cada nodo + expiración de ventiladores.
   2. `processTasks()` — completa tareas vencidas (`now - startedAt >= durationSecs*1000`); después despacha el **pool global**: mientras queden tareas y workers elegibles, `dispatchHighestPriority` las asigna al nodo activo libre más frío (`startExternalTask`); finalmente, los nodos con cola local libre arrancan su siguiente tarea (`startNextTask`).
-  3. `evaluateRules()` — recorre `rules.enabledList()` (las reglas se leen **cada tick** → edits en caliente vía API), respeta `cooldownMs`, ejecuta `runAction` por nodo y emite `rule:triggered` (+ `alert` si la acción es `send_alert`). La acción `enqueue_task` con `subject=any|all` inyecta **una** tarea al pool global en vez de una por nodo.
+  3. `evaluateRules()` — recorre `rules.enabledList()` (las reglas se leen **cada tick** → edits en caliente vía API), respeta `cooldownMs`, ejecuta `runAction` por nodo y emite `rule:triggered` (+ `alert` si la acción es `send_alert`). La acción `enqueue_task` con `subject=any|all` inyecta **una** tarea al pool global en vez de una por nodo. El motor cachea la última `inference:completed` por nodo (TTL 60 s) y la pasa a `evaluateRule` para las métricas predictivas; el payload incluye `action`, `applied`, `reason?`, `taskId?` y `predictedTemp?` para auditar el resultado de la actuación. La regla por defecto «Ventilador por predicción alta» usa `predictedDelta > 1.5` con cooldown de 30 s.
   4. Emite `node:updated` por nodo y `state:update` (snapshot).
 - `pause()`/`resume()` detienen/reanudan el intervalo. `stepOnce()` permite avanzar un tick manualmente **solo en pausa** (si está corriendo lanza un error que la API traduce a HTTP 409).
 - `reset()` restaura nodos, colas, pilas y contadores de reglas. El motor arranca con `engine.start()` al levantar el servidor.
@@ -236,10 +240,10 @@ Esquema `ruleSchema` (validación zod en `api/validation.ts`):
 | `cooldownMs` | int 0–3_600_000 | `30000` |
 | `subject` | enum | `'any'` |
 | `nodeId` | string | obligatorio si `subject=node` |
-| `metric` | enum (6) | requerido |
+| `metric` | enum (8) | requerido |
 | `op` | enum (6) | requerido |
 | `value` | number | requerido |
-| `action` | enum (8) | requerido |
+| `action` | enum (9) | requerido |
 | `actionParams` | record | `{}` |
 
 Ejemplo:
@@ -295,7 +299,7 @@ El servidor sobrescribe en `infra/sockets.ts`: cada evento del bus se reenvía c
 |---|---|---|
 | `state:update` | `SystemSnapshotDto` | Cada tick y tras pausa/resume/reset/PATCH |
 | `node:updated` | `{nodeId, node}` | Cada tick y tras cambios por API |
-| `rule:triggered` | `{rule, nodeId, at}` | Cuando una regla se dispara sobre un nodo |
+| `rule:triggered` | `{rule, nodeId?, action, applied, reason?, taskId?, predictedTemp?, at}` | Cuando una regla se dispara. `nodeId` falta si la tarea fue al pool global; `applied=false` indica que la acción no tuvo efecto |
 | `task:queued` | `{nodeId, task}` | Al encolar por API o por regla en la cola de un nodo |
 | `task:completed` | `{nodeId, task}` | Cuando una tarea termina en el motor |
 | `task:pending` | `{task}` | Al entrar una tarea al pool global (API o regla `any`/`all`) |
@@ -613,8 +617,8 @@ pnpm.cmd run typecheck && pnpm.cmd run test && pnpm.cmd run build
 ```
 
 - `typecheck` falla con imports/locals sin usar (`noUnusedLocals`/`noUnusedParameters`).
-- 57 tests vitest en `backend/test/` (térmico, colas de prioridad/pila, dispatcher, reglas,
-  persistencia de log y de reglas, capa `Database` y `TimeSeriesSink`).
+- 86 tests vitest en `backend/test/` (térmico, colas de prioridad/pila, dispatcher, reglas con
+  métricas predictivas, acciones, persistencia de log y de reglas, capa `Database` y `TimeSeriesSink`).
 - El frontend valida con `npm.cmd run lint` y `npm.cmd run build`.
 
 Mensajes en español, imperativo, con scope: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. Ejemplos: `feat(backend): ...`, `feat(frontend): ...`. No commitear artefactos de build (`node_modules/`, `dist/`, `.pio/`).
