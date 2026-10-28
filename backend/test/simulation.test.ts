@@ -84,6 +84,16 @@ describe('SimulationEngine telemetría', () => {
   });
 });
 
+describe('SystemSimulation capacidades', () => {
+  it('propaga la capacidad de cola y pila a los workers', () => {
+    const { system } = buildEngine();
+    const worker = system.getNode('node-1')!;
+
+    expect(worker.queueSnapshot().capacity).toBe(seed.queueCapacity);
+    expect(worker.stackSnapshot().capacity).toBe(seed.stackCapacity);
+  });
+});
+
 describe('SimulationEngine reglas con inferencia', () => {
   it('dispara con la última inferencia y emite rule:triggered', () => {
     const { engine, bus, rules, system } = buildEngine();

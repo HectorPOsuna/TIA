@@ -68,6 +68,9 @@ export class SystemSimulation {
         initialTemp: this.seed.initialTemp,
         targetTemp: this.seed.targetTemp,
         ambientTemp: this.seed.ambientTemp,
+        queueCapacity: this.seed.queueCapacity,
+        stackCapacity: this.seed.stackCapacity,
+        maxConsecutiveFailures: this.seed.maxConsecutiveFailures,
       });
     }
   }
