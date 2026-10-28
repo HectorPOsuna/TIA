@@ -1,23 +1,38 @@
-import { Canvas } from '@react-three/fiber'
+import { useEffect } from 'react'
+import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls, ContactShadows } from '@react-three/drei'
 import { Floor } from './Floor.jsx'
 import { NodeTile } from './NodeTile.jsx'
-import { computeLayout, cameraDistance } from './layout.js'
+import { computeLayout, cameraDistance, FOV_DEG } from './layout.js'
 import { tempBand } from './heatmap.js'
 
-export function Scene({ snapshot, bandLo, bandHi, selectedId, onSelect }) {
+function CameraRig({ center, halfWidth, halfDepth }) {
+  const { camera, size } = useThree()
+  const aspect = size.width / Math.max(1, size.height)
+  const distance = cameraDistance(halfWidth, halfDepth, aspect)
+
+  useEffect(() => {
+    camera.position.set(center.x, distance, center.z + distance * 0.82)
+  }, [camera, center.x, center.z, distance])
+
+  return null
+}
+
+export function Scene({ snapshot, bandLo, bandHi, selectedId, onSelect, reducedMotion = false }) {
   const nodes = [snapshot.general, ...snapshot.workers]
-  const { positionsBy, maxSpan } = computeLayout(
+  const portrait = window.innerWidth < window.innerHeight
+  const { positionsBy, center, halfWidth, halfDepth } = computeLayout(
     snapshot.workers.map((n) => n.id),
     snapshot.general.id,
+    portrait,
   )
-  const d = cameraDistance(maxSpan)
 
   return (
     <Canvas
-      camera={{ position: [0, d, d * 0.82], fov: 42, near: 0.5, far: 400 }}
+      camera={{ position: [0, 13, 11], fov: FOV_DEG, near: 0.5, far: 400 }}
       dpr={[1, 1.75]}
     >
+      <CameraRig center={center} halfWidth={halfWidth} halfDepth={halfDepth} />
       <color attach="background" args={['#0a0d14']} />
       <ambientLight intensity={0.55} />
       <directionalLight position={[8, 14, 6]} intensity={1.0} />
@@ -31,11 +46,13 @@ export function Scene({ snapshot, bandLo, bandHi, selectedId, onSelect }) {
           heat={tempBand(node.currentTemp, bandLo, bandHi)}
           selected={selectedId === node.id}
           onSelect={onSelect}
+          reducedMotion={reducedMotion}
         />
       ))}
       <ContactShadows position={[0, 0.01, 0]} opacity={0.38} scale={90} blur={2.5} far={7} color="#000000" />
       <OrbitControls
         makeDefault
+        target={[center.x, 0, center.z]}
         enableDamping
         dampingFactor={0.08}
         enablePan={false}

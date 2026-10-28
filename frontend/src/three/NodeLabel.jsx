@@ -1,14 +1,22 @@
+import { useEffect, useState } from 'react'
 import { Html } from '@react-three/drei'
 
-export function NodeLabel({ name, temp, fan, queue, stack, height, selected }) {
+export function NodeLabel({ name, temp, fan, queue, stack, height, lift = 0.5, selected }) {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setReady(true))
+    return () => cancelAnimationFrame(frame)
+  }, [])
+
   const chips = [
     fan ? <span key="fan" className="node-label__chip node-label__chip--info">fan</span> : null,
     <span key="queue" className="node-label__chip">{queue}</span>,
     <span key="stack" className="node-label__chip node-label__chip--warn">{stack}</span>,
   ]
+  if (!ready) return null
   return (
     <Html
-      position={[0, height + 0.42, 0]}
+      position={[0, height + lift, 0]}
       center
       distanceFactor={9}
       zIndexRange={[5, 0]}

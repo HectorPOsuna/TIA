@@ -7,37 +7,39 @@ import { heatColor } from './heatmap.js'
 const FAN_SPIN = 6
 const ERROR_PULSE = 4.5
 
-function FanDisc({ y }) {
+function FanDisc({ y, reducedMotion }) {
   const blade = useRef(null)
   useFrame((_, dt) => {
-    if (blade.current) blade.current.rotation.z += dt * FAN_SPIN
+    if (blade.current && !reducedMotion) blade.current.rotation.z += dt * FAN_SPIN
   })
   return (
     <group rotation-x={-Math.PI / 2} position={[0, y, 0]}>
       <mesh ref={blade}>
-        <cylinderGeometry args={[0.78, 0.78, 0.035, 32]} />
+        <cylinderGeometry args={[0.58, 0.58, 0.03, 32]} />
         <meshStandardMaterial
           color="#0e7490"
           emissive="#22d3ee"
-          emissiveIntensity={0.85}
+          emissiveIntensity={0.5}
           metalness={0.6}
           roughness={0.25}
         />
       </mesh>
       <mesh rotation-z={Math.PI / 4}>
-        <planeGeometry args={[0.3, 1.2]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.45} />
+        <planeGeometry args={[0.22, 0.9]} />
+        <meshBasicMaterial color="#22d3ee" transparent opacity={0.35} />
       </mesh>
     </group>
   )
 }
 
-function SelectionRing({ active }) {
+function SelectionRing({ active, reducedMotion }) {
   const ref = useRef(null)
   useFrame((state) => {
     if (ref.current && ref.current.material) {
       ref.current.material.opacity = active
-        ? 0.5 + 0.35 * Math.sin(state.clock.elapsedTime * 4)
+        ? reducedMotion
+          ? 0.75
+          : 0.5 + 0.35 * Math.sin(state.clock.elapsedTime * 4)
         : 0
     }
   })
@@ -51,7 +53,7 @@ function SelectionRing({ active }) {
 
 const STATUS_COLORS = { active: null, inactive: '#33415c', error: '#6b2f2f' }
 
-export function NodeTile({ node, position, heat, selected, onSelect }) {
+export function NodeTile({ node, position, heat, selected, onSelect, reducedMotion = false }) {
   const group = useRef(null)
   const mat = useRef(null)
   const [hovered, setHovered] = useState(false)
@@ -75,6 +77,17 @@ export function NodeTile({ node, position, heat, selected, onSelect }) {
     if (!g || !m) return
     const target = hovered || selected ? 1.05 : 1
     g.scale.set(target, target, target)
+    if (reducedMotion) {
+      m.emissiveIntensity =
+        status === 'error'
+          ? 0.7
+          : node.fanActive
+            ? 0.5
+            : status === 'inactive'
+              ? 0.03
+              : 0.12 + heat * 0.35
+      return
+    }
     const t = state.clock.elapsedTime
     if (status === 'error') {
       m.emissiveIntensity = 0.5 + 0.5 * Math.sin(t * ERROR_PULSE)
@@ -114,8 +127,8 @@ export function NodeTile({ node, position, heat, selected, onSelect }) {
           emissiveIntensity={0.15}
         />
       </RoundedBox>
-      {node.fanActive && <FanDisc y={height + 0.05} />}
-      <SelectionRing active={selected} />
+      {node.fanActive && <FanDisc y={height + 0.05} reducedMotion={reducedMotion} />}
+      <SelectionRing active={selected} reducedMotion={reducedMotion} />
       <NodeLabel
         name={node.name}
         temp={node.currentTemp}
@@ -123,6 +136,7 @@ export function NodeTile({ node, position, heat, selected, onSelect }) {
         queue={node.queue.size}
         stack={node.stack.size}
         height={height}
+        lift={isGeneral ? 1.05 : 0.5}
         selected={selected}
       />
     </group>
