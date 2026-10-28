@@ -4,11 +4,16 @@ import { Icon } from './Icon.jsx'
 export function ReplayBar({ samples, replayIndex, isReplay, onGo, onLive, onStep }) {
   const [playing, setPlaying] = useState(false)
   const stateRef = useRef({ index: replayIndex, max: samples.length - 1 })
+  const stepRef = useRef(onStep)
   const count = samples.length
   const maxIdx = count - 1
   const current = isReplay ? replayIndex : maxIdx
   const currentTs =
     current >= 0 && samples[current] ? samples[current].ts : count > 0 ? samples[maxIdx].ts : null
+
+  useEffect(() => {
+    stepRef.current = onStep
+  }, [onStep])
 
   useEffect(() => {
     stateRef.current = { index: replayIndex, max: maxIdx }
@@ -22,10 +27,10 @@ export function ReplayBar({ samples, replayIndex, isReplay, onGo, onLive, onStep
         setPlaying(false)
         return
       }
-      onStep(1)
+      stepRef.current(1)
     }, 600)
     return () => clearInterval(id)
-  }, [playing, onStep])
+  }, [playing])
 
   const togglePlay = () => {
     if (playing) {
