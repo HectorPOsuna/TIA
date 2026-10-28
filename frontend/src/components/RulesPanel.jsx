@@ -11,6 +11,12 @@ export function RulesPanel({ rules, triggered = [], api }) {
               <li key={`${item.rule?.id ?? 'rule'}-${i}`} className="list__item mono" style={{ fontSize: 12 }}>
                 <strong>{item.rule?.name ?? 'regla'}</strong>
                 {item.nodeId && <span className="dim">{item.nodeId}</span>}
+                <span className="dim">
+                  {item.action ?? item.rule?.action}
+                  {item.applied === false
+                    ? ` · no aplicada${item.reason ? `: ${item.reason}` : ''}`
+                    : ''}
+                </span>
                 <span className="dim" style={{ marginLeft: 'auto' }}>
                   {new Date(item.at).toLocaleTimeString('es')}
                 </span>
