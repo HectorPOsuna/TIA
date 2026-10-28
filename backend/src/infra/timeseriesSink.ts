@@ -69,6 +69,10 @@ export class TimeSeriesSink {
           metric: payload.rule.metric,
           op: payload.rule.op,
           value: payload.rule.value,
+          applied: payload.applied,
+          reason: payload.reason ?? null,
+          taskId: payload.taskId ?? null,
+          predictedTemp: payload.predictedTemp ?? null,
         },
       );
     });

@@ -232,7 +232,14 @@ export class SimulationEngine {
 
       if (rule.action === 'enqueue_task' && (rule.subject === 'any' || rule.subject === 'all')) {
         const task = system.submitPending(taskOptionsFromActionParams(rule.actionParams));
-        bus.emit('rule:triggered', { rule: { ...rule }, at: now });
+        bus.emit('rule:triggered', {
+          rule: { ...rule },
+          action: rule.action,
+          applied: task !== null,
+          reason: task === null ? 'pool de tareas pendientes lleno' : undefined,
+          taskId: task?.id,
+          at: now,
+        });
         logs.add(
           task !== null ? 'info' : 'warning',
           'rule',
@@ -240,7 +247,7 @@ export class SimulationEngine {
             ? `Regla "${rule.name}" disparada → tarea p${task.priority} encolada en el pool global`
             : `Regla "${rule.name}" disparada → pool de tareas pendientes lleno`,
           undefined,
-          { ruleId: rule.id, taskId: task?.id },
+          { ruleId: rule.id, applied: task !== null, taskId: task?.id },
         );
         if (task !== null) {
           bus.emit('task:pending', { task });
@@ -249,7 +256,7 @@ export class SimulationEngine {
       }
 
       for (const node of nodes) {
-        runAction(
+        const result = runAction(
           rule.action,
           rule.actionParams,
           node,
@@ -261,13 +268,22 @@ export class SimulationEngine {
           },
         );
 
-        bus.emit('rule:triggered', { rule: { ...rule }, nodeId: node.id, at: now });
+        bus.emit('rule:triggered', {
+          rule: { ...rule },
+          nodeId: node.id,
+          action: rule.action,
+          applied: result.applied,
+          reason: result.reason,
+          taskId: result.taskId,
+          predictedTemp: this.predictedTempFor(node.id),
+          at: now,
+        });
         logs.add(
           rule.action === 'send_alert' ? 'critical' : 'warning',
           'rule',
-          `Regla "${rule.name}" disparada en ${node.id} → acción ${rule.action} (disparos: ${rule.triggerCount})`,
+          `Regla "${rule.name}" disparada en ${node.id} → acción ${rule.action}${result.applied ? '' : ` (no aplicada: ${result.reason ?? 'sin efecto'})`} (disparos: ${rule.triggerCount})`,
           node.id,
-          { ruleId: rule.id },
+          { ruleId: rule.id, applied: result.applied, reason: result.reason, taskId: result.taskId },
         );
 
         if (rule.action === 'send_alert') {

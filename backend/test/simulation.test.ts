@@ -96,7 +96,38 @@ describe('SimulationEngine reglas con inferencia', () => {
 
     expect(system.getNode('node-1')?.fanActive).toBe(true);
     expect(triggered).toHaveLength(1);
-    expect(triggered[0].nodeId).toBe('node-1');
+    expect(triggered[0]).toMatchObject({
+      nodeId: 'node-1',
+      action: 'fan_on',
+      applied: true,
+    });
+  });
+
+  it('registra el resultado de una tarea enviada al pool', () => {
+    const { engine, bus, rules, system } = buildEngine();
+    const triggered: RuleTriggeredPayload[] = [];
+    bus.on('rule:triggered', (payload) => triggered.push(payload));
+    rules.add(
+      predictionRule({
+        subject: 'any',
+        nodeId: undefined,
+        metric: 'temperature',
+        op: '>',
+        value: 55,
+        action: 'enqueue_task',
+        actionParams: { taskType: 'cooldown', durationSecs: 1 },
+      }),
+    );
+    system.getNode('node-1')!.currentTemp = 60;
+
+    advanceSteps(engine, 1);
+
+    expect(triggered).toHaveLength(1);
+    expect(triggered[0]).toMatchObject({
+      action: 'enqueue_task',
+      applied: true,
+    });
+    expect(triggered[0].taskId).toBeTruthy();
   });
 
   it('ignora predicciones más viejas que el TTL', () => {

@@ -29,6 +29,12 @@ export interface ActionEmitter {
   onTaskQueued?: (nodeId: string, task: Task) => void;
 }
 
+export interface ActionResult {
+  applied: boolean;
+  reason?: string;
+  taskId?: string;
+}
+
 const numParam = (params: Record<string, unknown> | undefined, key: string, fallback: number): number => {
   const raw = params?.[key];
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : fallback;
@@ -79,7 +85,7 @@ export function runAction(
   node: SimNode,
   logger: ActionLogger,
   emitter: ActionEmitter = {},
-): void {
+): ActionResult {
   const now = Date.now();
 
   switch (action) {
@@ -89,14 +95,14 @@ export function runAction(
       node.fanUntilMs = now + minutes * 60_000;
       node.pushEvent('change', `Ventilador activado (${minutes} min) en ${node.id}`);
       logger.log('info', 'node', `Ventilador activado en ${node.id}`, node.id, { action, minutes });
-      break;
+      return { applied: true };
     }
     case 'fan_off': {
       node.fanActive = false;
       node.fanUntilMs = 0;
       node.pushEvent('change', `Ventilador desactivado en ${node.id}`);
       logger.log('info', 'node', `Ventilador desactivado en ${node.id}`, node.id, { action });
-      break;
+      return { applied: true };
     }
     case 'shutdown': {
       if (node.status !== 'inactive') {
@@ -104,7 +110,7 @@ export function runAction(
         node.pushEvent('change', `Nodo ${node.id} apagado`);
         logger.log('warning', 'node', `Nodo ${node.id} apagado`, node.id, { action });
       }
-      break;
+      return { applied: true };
     }
     case 'startup': {
       if (node.status !== 'active') {
@@ -112,7 +118,7 @@ export function runAction(
         node.pushEvent('change', `Nodo ${node.id} reactivado`);
         logger.log('info', 'node', `Nodo ${node.id} reactivado`, node.id, { action });
       }
-      break;
+      return { applied: true };
     }
     case 'enqueue_task': {
       const options = taskOptionsFromActionParams(params);
@@ -134,19 +140,19 @@ export function runAction(
           reason: result.reason,
         },
       );
-      break;
+      return { applied: result.task !== null, reason: result.reason, taskId: result.task?.id };
     }
     case 'send_alert': {
       const message = strParam(params, 'message', `Alerta en ${node.id}`);
       logger.log('critical', 'alert', message, node.id, { action });
-      break;
+      return { applied: true };
     }
     case 'reduce_load': {
       const by = numParam(params, 'by', 0.3);
       node.workload = Math.max(0, node.workload - by);
       node.pushEvent('change', `Carga reducida en ${node.id}`);
       logger.log('info', 'node', `Carga reducida en ${node.id}`, node.id, { action, by });
-      break;
+      return { applied: true };
     }
     case 'set_workload': {
       const value = Math.min(1, Math.max(0, numParam(params, 'value', node.workload)));
@@ -156,7 +162,7 @@ export function runAction(
         action,
         value,
       });
-      break;
+      return { applied: true };
     }
     case 'set_target_temperature': {
       const target = numParam(params, 'target', node.targetTemp);
@@ -167,9 +173,9 @@ export function runAction(
         action,
         target,
       });
-      break;
+      return { applied: true };
     }
     default:
-      break;
+      return { applied: false, reason: 'acción desconocida' };
   }
 }

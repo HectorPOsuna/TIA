@@ -144,6 +144,11 @@ describe('TimeSeriesSink eventos', () => {
         triggerCount: 1,
       },
       nodeId: 'node-2',
+      action: 'send_alert',
+      applied: false,
+      reason: 'sin efecto',
+      taskId: 'task-9',
+      predictedTemp: 41.5,
       at: 1_700_000_000_002,
     });
     bus.emit('task:pending', { task: makeTask() });
@@ -163,6 +168,13 @@ describe('TimeSeriesSink eventos', () => {
       null,
     ]);
     expect(params.slice(7, 14)[3]).toBe('rule');
+    expect(JSON.parse(params[13] as string)).toMatchObject({
+      ruleId: 'rule-1',
+      applied: false,
+      reason: 'sin efecto',
+      taskId: 'task-9',
+      predictedTemp: 41.5,
+    });
     expect(params.slice(14, 21)[2]).toBe('task');
     expect(JSON.parse(params[20] as string)).toMatchObject({ taskId: 'task-1' });
   });

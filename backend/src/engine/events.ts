@@ -1,4 +1,4 @@
-import type { NodeDto, Rule, SystemSnapshotDto, TaskDto } from '../domain/types.js';
+import type { ActionType, NodeDto, Rule, SystemSnapshotDto, TaskDto } from '../domain/types.js';
 import type { AiActionKind } from '../domain/aiControl.js';
 
 export interface NodeUpdatedPayload {
@@ -9,6 +9,11 @@ export interface NodeUpdatedPayload {
 export interface RuleTriggeredPayload {
   rule: Rule;
   nodeId?: string;
+  action: ActionType;
+  applied: boolean;
+  reason?: string;
+  taskId?: string;
+  predictedTemp?: number;
   at: number;
 }
 
