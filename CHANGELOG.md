@@ -3,6 +3,21 @@
 Todas las notas significativas de los cambios de WAItt se documentan en este archivo.
 
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
+## [1.7.0](https://github.com/HectorPOsuna/TIA/compare/v1.6.0...v1.7.0) (2026-10-29)
+
+### Añadido
+
+* **frontend:** rediseña la interfaz como escaparate inmersivo ([e2510ee](https://github.com/HectorPOsuna/TIA/commit/e2510eebcd6434b2c2d2eadd708cc8898865949d))
+
+### Corregido
+
+* **frontend:** estabiliza las etiquetas 3D y el encuadre de la escena ([3162a61](https://github.com/HectorPOsuna/TIA/commit/3162a615bfed0aba46986df638800e80ba7cd24f))
+* **frontend:** mantiene el avance del replay entre renders ([9040239](https://github.com/HectorPOsuna/TIA/commit/904023945888e204c273e62584eeccc3720e02db))
+
+### Documentación
+
+* documenta el escaparate inmersivo y el quirk de StrictMode ([401cec0](https://github.com/HectorPOsuna/TIA/commit/401cec07d32e9542f933cf98472ec53e1ffced1e))
+
 ## [1.6.0](https://github.com/HectorPOsuna/TIA/compare/v1.5.0...v1.6.0) (2026-10-28)
 
 ### Añadido
