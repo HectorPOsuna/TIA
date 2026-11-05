@@ -120,8 +120,10 @@ al modelo representar el enfriamiento por tareas y los nodos inactivos.
 ## Frontend
 
 Escaparate inmersivo con la **escena cenital 3D** (Three.js + React Three Fiber) a pantalla completa:
-cada nodo es una cabina extruida cuyo color y altura reflejan su temperatura respecto al objetivo y
-la etiqueta 3D muestra temperatura, ventilador, cola y pila. Un **HUD flotante** resume estado,
+cada nodo es un **rack de servidor** con plinth, chasis, panel frontal térmico, ranuras, tira LED,
+ventilador en la tapa y halo. La altura del chasis sigue codificando la temperatura respecto al
+objetivo y el calor se expresa en el panel, el LED y el halo; la etiqueta 3D muestra temperatura,
+ventilador, cola y pila. Un **HUD flotante** resume estado,
 media, nodos activos, errores, IA y objetivo; el **dock de nodos** (flechas, Home y End) y la propia
 escena seleccionan un nodo, que abre un **drawer** de detalle (objetivo ±5°, ventilador, encolar
 tarea, tendencia, cola y pila LIFO). El **centro de control** es un `<dialog>` con pestañas **IA**
@@ -133,6 +135,11 @@ línea de tiempo, reproducción automática y navegación paso a paso. Durante e
 drawer son de solo lectura y la configuración del centro de control queda deshabilitada. El layout
 pasa a una columna en retrato y el drawer se convierte en hoja inferior; la escena respeta
 `prefers-reduced-motion`.
+
+La interfaz tiene **modo claro y oscuro**: el interruptor sol/luna del HUD cambia los tokens CSS y la
+paleta de la escena (`three/theme.js`). El tema inicial sigue `prefers-color-scheme`, la elección se
+persiste en `localStorage` (`waitt-theme`) y un script en `index.html` la aplica antes del primer
+pintado para evitar el destello.
 
 ```bash
 cd frontend
