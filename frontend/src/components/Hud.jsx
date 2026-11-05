@@ -13,10 +13,13 @@ export function Hud({
   onOpenControl,
   alertCount = 0,
   aiState,
+  theme = 'dark',
+  onToggleTheme,
 }) {
   const aiAvailable = aiState?.available !== false
   const aiEnabled = Boolean(aiState?.enabled)
   const aiLabel = !aiAvailable ? 'IA n/a' : aiEnabled ? 'IA auto' : 'IA off'
+  const themeLabel = theme === 'light' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'
 
   return (
     <header className="hud">
@@ -94,6 +97,17 @@ export function Hud({
             fijar
           </button>
         </form>
+
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={onToggleTheme}
+          aria-label={themeLabel}
+          aria-pressed={theme === 'light'}
+          title={themeLabel}
+        >
+          <Icon name={theme === 'light' ? 'moon' : 'sun'} />
+        </button>
 
         <button
           type="button"

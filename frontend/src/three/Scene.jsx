@@ -5,6 +5,7 @@ import { Floor } from './Floor.jsx'
 import { NodeTile } from './NodeTile.jsx'
 import { computeLayout, cameraDistance, FOV_DEG } from './layout.js'
 import { tempBand } from './heatmap.js'
+import { scenePalette } from './theme.js'
 
 function CameraRig({ center, halfWidth, halfDepth }) {
   const { camera, size } = useThree()
@@ -18,7 +19,16 @@ function CameraRig({ center, halfWidth, halfDepth }) {
   return null
 }
 
-export function Scene({ snapshot, bandLo, bandHi, selectedId, onSelect, reducedMotion = false }) {
+export function Scene({
+  snapshot,
+  bandLo,
+  bandHi,
+  selectedId,
+  onSelect,
+  reducedMotion = false,
+  theme = 'dark',
+}) {
+  const palette = scenePalette(theme)
   const nodes = [snapshot.general, ...snapshot.workers]
   const portrait = window.innerWidth < window.innerHeight
   const { positionsBy, center, halfWidth, halfDepth } = computeLayout(
@@ -33,11 +43,15 @@ export function Scene({ snapshot, bandLo, bandHi, selectedId, onSelect, reducedM
       dpr={[1, 1.75]}
     >
       <CameraRig center={center} halfWidth={halfWidth} halfDepth={halfDepth} />
-      <color attach="background" args={['#0a0d14']} />
-      <ambientLight intensity={0.55} />
-      <directionalLight position={[8, 14, 6]} intensity={1.0} />
-      <directionalLight position={[-9, 8, -7]} intensity={0.35} color="#7dd3fc" />
-      <Floor />
+      <color attach="background" args={[palette.background]} />
+      <ambientLight intensity={palette.ambient} />
+      <directionalLight position={[8, 14, 6]} intensity={palette.key} />
+      <directionalLight
+        position={[-9, 8, -7]}
+        intensity={palette.rim}
+        color={palette.rimColor}
+      />
+      <Floor palette={palette} />
       {nodes.map((node) => (
         <NodeTile
           key={node.id}
@@ -47,9 +61,17 @@ export function Scene({ snapshot, bandLo, bandHi, selectedId, onSelect, reducedM
           selected={selectedId === node.id}
           onSelect={onSelect}
           reducedMotion={reducedMotion}
+          palette={palette}
         />
       ))}
-      <ContactShadows position={[0, 0.01, 0]} opacity={0.38} scale={90} blur={2.5} far={7} color="#000000" />
+      <ContactShadows
+        position={[0, 0.01, 0]}
+        opacity={palette.shadowOpacity}
+        scale={90}
+        blur={2.5}
+        far={7}
+        color={palette.shadowColor}
+      />
       <OrbitControls
         makeDefault
         target={[center.x, 0, center.z]}

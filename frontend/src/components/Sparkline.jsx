@@ -1,4 +1,4 @@
-export function Sparkline({ values, target, marker, color = '#22d3ee', height = 44 }) {
+export function Sparkline({ values, target, marker, color = 'var(--cyan)', height = 44 }) {
   if (!values || values.length < 2) return null
   const width = 640
   const span = marker != null && Number.isFinite(marker) ? [...values, marker] : values
@@ -25,7 +25,7 @@ export function Sparkline({ values, target, marker, color = '#22d3ee', height = 
           y1={ty}
           x2={width}
           y2={ty}
-          stroke="#7c879e"
+          stroke="var(--spark-guide)"
           strokeWidth="1"
           strokeDasharray="3 3"
         />
@@ -37,11 +37,11 @@ export function Sparkline({ values, target, marker, color = '#22d3ee', height = 
             y1={my}
             x2={width}
             y2={my}
-            stroke="#c084fc"
+            stroke="var(--purple)"
             strokeWidth="2"
             strokeDasharray="2 2"
           />
-          <circle cx={width - 6} cy={my} r="3.5" fill="#c084fc" />
+          <circle cx={width - 6} cy={my} r="3.5" fill="var(--purple)" />
         </>
       )}
     </svg>

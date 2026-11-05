@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: #0a0d14;
   --bg-elev: #10141f;
   --bg-panel: #0e1320;
@@ -10,18 +11,84 @@
   --text-strong: #eef2fb;
   --accent: #38bdf8;
   --accent-soft: rgba(56, 189, 248, 0.14);
+  --accent-hover: #7dd3fc;
+  --accent-ring: rgba(56, 189, 248, 0.22);
   --cyan: #22d3ee;
+  --cyan-soft: rgba(34, 211, 238, 0.08);
+  --cyan-border: rgba(34, 211, 238, 0.4);
+  --cyan-ring: rgba(34, 211, 238, 0.14);
   --amber: #fbbf24;
   --danger: #f87171;
   --ok: #34d399;
+  --purple: #c084fc;
+  --purple-soft: rgba(192, 132, 252, 0.06);
+  --on-accent: #04304a;
+  --on-ok: #062e24;
+  --on-danger: #3a0d0d;
+  --on-warn: #3a2a05;
+  --on-info: #05314a;
   --heat-low: #2563eb;
   --heat-mid: #facc15;
   --heat-high: #ef4444;
   --glass: rgba(10, 13, 20, 0.72);
   --glass-strong: rgba(10, 13, 20, 0.92);
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  --chip-bg: rgba(10, 13, 20, 0.85);
+  --dock-bg: rgba(10, 13, 20, 0.68);
+  --dock-bg-hover: rgba(16, 20, 31, 0.9);
+  --drawer-from: #10141f;
+  --drawer-to: #0a0d14;
+  --backdrop: rgba(4, 7, 12, 0.7);
+  --label-shadow: rgba(0, 0, 0, 0.9);
+  --label-glow: rgba(56, 189, 248, 0.35);
+  --spark-guide: rgba(120, 160, 235, 0.18);
+  --inactive-dot: #4b5b78;
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, 'Cascadia Code', Consolas, 'Courier New', monospace;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #eef3fb;
+  --bg-elev: #ffffff;
+  --bg-panel: #f7faff;
+  --bg-input: #ffffff;
+  --border: rgba(30, 64, 120, 0.16);
+  --border-strong: rgba(30, 64, 120, 0.3);
+  --text: #33415c;
+  --text-dim: #5b6b85;
+  --text-strong: #0f172a;
+  --accent: #0369a1;
+  --accent-soft: rgba(3, 105, 161, 0.12);
+  --accent-hover: #075985;
+  --accent-ring: rgba(3, 105, 161, 0.2);
+  --cyan: #0e7490;
+  --cyan-soft: rgba(14, 116, 144, 0.08);
+  --cyan-border: rgba(14, 116, 144, 0.4);
+  --cyan-ring: rgba(14, 116, 144, 0.14);
+  --amber: #b45309;
+  --danger: #b91c1c;
+  --ok: #047857;
+  --purple: #7c3aed;
+  --purple-soft: rgba(124, 58, 237, 0.08);
+  --on-accent: #ffffff;
+  --on-ok: #ffffff;
+  --on-danger: #ffffff;
+  --on-warn: #ffffff;
+  --on-info: #ffffff;
+  --glass: rgba(255, 255, 255, 0.78);
+  --glass-strong: rgba(255, 255, 255, 0.94);
+  --shadow: 0 18px 50px rgba(30, 41, 59, 0.18);
+  --chip-bg: rgba(255, 255, 255, 0.9);
+  --dock-bg: rgba(255, 255, 255, 0.72);
+  --dock-bg-hover: rgba(255, 255, 255, 0.95);
+  --drawer-from: #ffffff;
+  --drawer-to: #eef3fb;
+  --backdrop: rgba(15, 23, 42, 0.35);
+  --label-shadow: rgba(255, 255, 255, 0.9);
+  --label-glow: rgba(3, 105, 161, 0.25);
+  --spark-guide: rgba(30, 64, 120, 0.25);
+  --inactive-dot: #94a3b8;
 }
 
 * {
@@ -41,7 +108,6 @@ body {
   color: var(--text);
   font: 14px/1.45 var(--sans);
   -webkit-font-smoothing: antialiased;
-  color-scheme: dark;
 }
 
 button,
@@ -260,13 +326,13 @@ h3 {
 
 .hud__ai.is-auto {
   color: var(--cyan);
-  border-color: rgba(34, 211, 238, 0.4);
-  background: rgba(34, 211, 238, 0.08);
+  border-color: var(--cyan-border);
+  background: var(--cyan-soft);
 }
 
 .hud__ai.is-auto .hud__dot {
   background: var(--cyan);
-  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.14);
+  box-shadow: 0 0 0 3px var(--cyan-ring);
 }
 
 .hud__ai.is-off {
@@ -314,7 +380,7 @@ h3 {
   padding: 0 4px;
   border-radius: 999px;
   background: var(--danger);
-  color: #3a0d0d;
+  color: var(--on-danger);
   font: 700 10px/16px var(--mono);
   text-align: center;
 }
@@ -377,7 +443,7 @@ h3 {
   padding: 7px 9px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  background: rgba(10, 13, 20, 0.68);
+  background: var(--dock-bg);
   color: var(--text);
   text-align: left;
   cursor: pointer;
@@ -385,14 +451,14 @@ h3 {
 
 .dock__item:hover {
   border-color: var(--border-strong);
-  background: rgba(16, 20, 31, 0.9);
+  background: var(--dock-bg-hover);
 }
 
 .dock__item.is-selected {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--text-strong);
-  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.22);
+  box-shadow: inset 0 0 0 1px var(--accent-ring);
 }
 
 .dock__status {
@@ -407,7 +473,7 @@ h3 {
 }
 
 .dock__status--inactive {
-  background: #4b5b78;
+  background: var(--inactive-dot);
 }
 
 .dock__status--error {
@@ -468,13 +534,13 @@ h3 {
 .btn--primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #04304a;
+  color: var(--on-accent);
 }
 
 .btn--primary:hover {
-  background: #7dd3fc;
-  color: #04304a;
-  border-color: #7dd3fc;
+  background: var(--accent-hover);
+  color: var(--on-accent);
+  border-color: var(--accent-hover);
 }
 
 .btn--danger {
@@ -548,25 +614,25 @@ h3 {
 }
 
 .badge--ok {
-  color: #062e24;
+  color: var(--on-ok);
   background: var(--ok);
   border-color: var(--ok);
 }
 
 .badge--danger {
-  color: #3a0d0d;
+  color: var(--on-danger);
   background: var(--danger);
   border-color: var(--danger);
 }
 
 .badge--warn {
-  color: #3a2a05;
+  color: var(--on-warn);
   background: var(--amber);
   border-color: var(--amber);
 }
 
 .badge--info {
-  color: #05314a;
+  color: var(--on-info);
   background: var(--accent);
   border-color: var(--accent);
 }

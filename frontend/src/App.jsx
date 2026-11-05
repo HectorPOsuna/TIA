@@ -5,6 +5,7 @@ import { useHistory } from './hooks/useHistory.js'
 import { useInference } from './hooks/useInference.js'
 import { useAiControl } from './hooks/useAiControl.js'
 import { useReducedMotion } from './hooks/useReducedMotion.js'
+import { useTheme } from './hooks/useTheme.js'
 import { Hud } from './components/Hud.jsx'
 import { NodeDock } from './components/NodeDock.jsx'
 import { NodeDrawer } from './components/NodeDrawer.jsx'
@@ -25,6 +26,7 @@ export default function App() {
   const inference = useInference()
   const aiControl = useAiControl()
   const reducedMotion = useReducedMotion()
+  const { theme, toggle: toggleTheme } = useTheme()
 
   const [selectedId, setSelectedId] = useState(null)
   const [controlTab, setControlTab] = useState(null)
@@ -146,6 +148,7 @@ export default function App() {
                       selectedId={selectedId}
                       onSelect={selectNode}
                       reducedMotion={reducedMotion}
+                      theme={theme}
                     />
                   </div>
                 </Suspense>
@@ -172,6 +175,8 @@ export default function App() {
             onOpenControl={(tab) => setControlTab(tab)}
             alertCount={alerts.length}
             aiState={aiControl.status}
+            theme={theme}
+            onToggleTheme={toggleTheme}
           />
 
           {effective && (

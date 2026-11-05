@@ -100,11 +100,11 @@ export function EfficiencyPanel({ snapshot, samples, inference }) {
           <div className="hint" style={{ marginBottom: 4 }}>
             Temperatura media (sesión)
           </div>
-          <Sparkline values={series} target={snapshot.targetTemp} color="#38bdf8" />
+          <Sparkline values={series} target={snapshot.targetTemp} color="var(--accent)" />
           <div className="hint" style={{ margin: '10px 0 4px' }}>
             Tareas en pool (sesión)
           </div>
-          <Sparkline values={poolSeries} color="#f59e0b" />
+          <Sparkline values={poolSeries} color="var(--amber)" />
         </div>
       )}
     </div>
