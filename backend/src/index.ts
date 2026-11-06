@@ -8,6 +8,7 @@ import { RuleStore } from './domain/rules-store.js';
 import { SystemSimulation } from './domain/system.js';
 import type { SimEventMap } from './engine/events.js';
 import { EventBus } from './engine/eventBus.js';
+import { EventEngine } from './engine/eventEngine.js';
 import { SimulationEngine } from './engine/simulationEngine.js';
 import { buildHttpServer } from './infra/httpServer.js';
 import { DEFAULT_AI_POLICY, type AiPolicy } from './domain/aiControl.js';
@@ -67,7 +68,20 @@ if (database !== null) {
     );
   });
 }
-const engine = new SimulationEngine({ system, rules, logs, bus }, config.TICK_MS, config.LOG_TELEMETRY_EVERY);
+const events = new EventEngine(system, bus, logs, {
+  enabled: config.EVENTS_ENABLED,
+  intervalMs: config.EVENTS_INTERVAL_MS,
+  probabilities: {
+    task_arrival: config.EVENT_TASK_ARRIVAL_PROBABILITY,
+    thermal_spike: config.EVENT_THERMAL_SPIKE_PROBABILITY,
+    node_failure: config.EVENT_NODE_FAILURE_PROBABILITY,
+    node_recovery: config.EVENT_NODE_RECOVERY_PROBABILITY,
+    fan_failure: config.EVENT_FAN_FAILURE_PROBABILITY,
+    workload_surge: config.EVENT_WORKLOAD_SURGE_PROBABILITY,
+    synthetic_alert: config.EVENT_SYNTHETIC_ALERT_PROBABILITY,
+  },
+});
+const engine = new SimulationEngine({ system, rules, logs, bus, events }, config.TICK_MS, config.LOG_TELEMETRY_EVERY);
 
 const aiPolicy: AiPolicy = {
   ...DEFAULT_AI_POLICY,
@@ -134,6 +148,7 @@ const ctx: AppContext = {
   logs,
   engine,
   bus,
+  events,
   inference: inference ?? undefined,
   aiControl: aiControl ?? undefined,
 };

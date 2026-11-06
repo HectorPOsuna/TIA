@@ -1,4 +1,5 @@
 import type { EventBus } from '../engine/eventBus.js';
+import type { EventEngine } from '../engine/eventEngine.js';
 import type { SimEventMap } from '../engine/events.js';
 import type { SimulationEngine } from '../engine/simulationEngine.js';
 import type { RuleStore } from '../domain/rules-store.js';
@@ -13,6 +14,7 @@ export interface AppContext {
   logs: LogStore;
   engine: SimulationEngine;
   bus: EventBus<SimEventMap>;
+  events: EventEngine;
   inference?: InferenceService;
   aiControl?: InferenceController;
 }

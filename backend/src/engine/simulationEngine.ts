@@ -5,6 +5,7 @@ import type { RuleStore } from '../domain/rules-store.js';
 import type { SystemSimulation } from '../domain/system.js';
 import type { LogStore } from '../infra/logger.js';
 import { EventBus } from './eventBus.js';
+import type { EventEngine } from './eventEngine.js';
 import type { SimEventMap } from './events.js';
 
 export interface EngineDeps {
@@ -12,6 +13,7 @@ export interface EngineDeps {
   rules: RuleStore;
   logs: LogStore;
   bus: EventBus<SimEventMap>;
+  events?: EventEngine;
 }
 
 const MAX_DT_MS = 5000;
@@ -97,6 +99,7 @@ export class SimulationEngine {
   reset(): void {
     this.deps.system.reset();
     this.deps.rules.resetTriggerCounters();
+    this.deps.events?.resetRuntime();
     this.deps.logs.add('warning', 'system', 'Simulación reiniciada');
     this.lastTickAt = Date.now();
     this.broadcast();
@@ -117,6 +120,7 @@ export class SimulationEngine {
       this.logTelemetry();
     }
     this.processTasks();
+    this.deps.events?.step(dtMs);
     this.evaluateRules();
 
     const now = Date.now();

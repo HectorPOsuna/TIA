@@ -64,6 +64,15 @@ const EnvSchema = z.object({
   AI_CONTROL_ALLOW_TARGET: boolFromEnv(true),
   AI_CONTROL_ALLOW_TASKS: boolFromEnv(true),
   AI_CONTROL_ALLOW_SHUTDOWN: boolFromEnv(false),
+  EVENTS_ENABLED: boolFromEnv(false),
+  EVENTS_INTERVAL_MS: z.coerce.number().int().min(250).max(3_600_000).default(5000),
+  EVENT_TASK_ARRIVAL_PROBABILITY: z.coerce.number().min(0).max(1).default(0.08),
+  EVENT_THERMAL_SPIKE_PROBABILITY: z.coerce.number().min(0).max(1).default(0.02),
+  EVENT_NODE_FAILURE_PROBABILITY: z.coerce.number().min(0).max(1).default(0.01),
+  EVENT_NODE_RECOVERY_PROBABILITY: z.coerce.number().min(0).max(1).default(0.03),
+  EVENT_FAN_FAILURE_PROBABILITY: z.coerce.number().min(0).max(1).default(0.01),
+  EVENT_WORKLOAD_SURGE_PROBABILITY: z.coerce.number().min(0).max(1).default(0.02),
+  EVENT_SYNTHETIC_ALERT_PROBABILITY: z.coerce.number().min(0).max(1).default(0.01),
 });
 
 export type Config = z.infer<typeof EnvSchema>;

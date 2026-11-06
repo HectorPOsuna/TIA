@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EVENT_CATALOG, EVENT_IDS, applyEvent } from '../src/domain/events.js';
+import { RuleStore } from '../src/domain/rules-store.js';
 import { SystemSimulation } from '../src/domain/system.js';
 import { EventBus } from '../src/engine/eventBus.js';
 import { EventEngine } from '../src/engine/eventEngine.js';
 import type { SimEventMap } from '../src/engine/events.js';
+import { SimulationEngine } from '../src/engine/simulationEngine.js';
 import { LogStore } from '../src/infra/logger.js';
 
 const seed = {
@@ -386,5 +388,43 @@ describe('EventEngine configuración', () => {
     const updated = engine.patchEvent('thermal_spike', { probability: 0.5, cooldownMs: 100 });
     expect(engine.state.generator).toMatchObject({ enabled: true, intervalMs: 2000 });
     expect(updated).toMatchObject({ probability: 0.5, cooldownMs: 100 });
+  });
+});
+
+describe('EventEngine integración con el tick', () => {
+  it('SimulationEngine avanza el generador y emite event:triggered', () => {
+    const system = makeSystem();
+    const rules = new RuleStore([]);
+    const logs = new LogStore(100);
+    const bus = new EventBus<SimEventMap>();
+    const events = new EventEngine(system, bus, logs, {
+      enabled: true,
+      intervalMs: 1000,
+      probabilities: { ...zeroProbabilities, task_arrival: 1 },
+      rng: rng(),
+    });
+    const engine = new SimulationEngine({ system, rules, logs, bus, events }, 1000, 0);
+    const received: unknown[] = [];
+    bus.on('event:triggered', (payload) => received.push(payload));
+    engine.pause();
+    engine.stepOnce();
+    expect(received).toHaveLength(1);
+    expect(system.pendingPool.size).toBeGreaterThan(0);
+  });
+
+  it('reset limpia los contadores del generador', () => {
+    const system = makeSystem();
+    const rules = new RuleStore([]);
+    const logs = new LogStore(100);
+    const bus = new EventBus<SimEventMap>();
+    const events = new EventEngine(system, bus, logs, {
+      enabled: false,
+      intervalMs: 5000,
+      probabilities: zeroProbabilities,
+    });
+    const engine = new SimulationEngine({ system, rules, logs, bus, events }, 1000, 0);
+    events.trigger('thermal_spike', { nodeId: 'node-1' });
+    engine.reset();
+    expect(events.state.events.every((event) => event.triggerCount === 0)).toBe(true);
   });
 });
