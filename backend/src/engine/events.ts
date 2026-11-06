@@ -1,5 +1,6 @@
 import type { ActionType, NodeDto, Rule, SystemSnapshotDto, TaskDto } from '../domain/types.js';
 import type { AiActionKind } from '../domain/aiControl.js';
+import type { EventCategory, EventId } from '../domain/events.js';
 
 export interface NodeUpdatedPayload {
   nodeId: string;
@@ -58,6 +59,19 @@ export interface AiActionPayload {
   at: number;
 }
 
+export interface EventTriggeredPayload {
+  eventId: EventId;
+  name: string;
+  category: EventCategory;
+  source: 'auto' | 'manual';
+  nodeId?: string;
+  applied: boolean;
+  message: string;
+  taskIds?: string[];
+  params?: Record<string, unknown>;
+  at: number;
+}
+
 export interface SimEventMap {
   'state:update': SystemSnapshotDto;
   'node:updated': NodeUpdatedPayload;
@@ -68,4 +82,5 @@ export interface SimEventMap {
   alert: AlertPayload;
   'inference:completed': InferencePayload;
   'ai:action': AiActionPayload;
+  'event:triggered': EventTriggeredPayload;
 }

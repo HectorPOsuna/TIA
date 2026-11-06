@@ -127,7 +127,8 @@ export type LogType =
   | 'task'
   | 'node'
   | 'ai'
-  | 'alert';
+  | 'alert'
+  | 'event';
 
 export interface LogEntry {
   ts: number;

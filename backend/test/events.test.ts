@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_CATALOG, EVENT_IDS, applyEvent } from '../src/domain/events.js';
 import { SystemSimulation } from '../src/domain/system.js';
+import { EventBus } from '../src/engine/eventBus.js';
+import { EventEngine } from '../src/engine/eventEngine.js';
+import type { SimEventMap } from '../src/engine/events.js';
+import { LogStore } from '../src/infra/logger.js';
 
 const seed = {
   initialNodes: 2,
@@ -17,6 +21,48 @@ const now = 1_700_000_000_000;
 const rng = (value = 0) => () => value;
 const makeSystem = (overrides: Partial<typeof seed> = {}) =>
   new SystemSimulation({ ...seed, ...overrides });
+
+const zeroProbabilities = {
+  task_arrival: 0,
+  thermal_spike: 0,
+  node_failure: 0,
+  node_recovery: 0,
+  fan_failure: 0,
+  workload_surge: 0,
+  synthetic_alert: 0,
+};
+
+function makeEngine(overrides: Partial<{
+  enabled: boolean;
+  intervalMs: number;
+  probabilities: typeof zeroProbabilities;
+  rng: () => number;
+  now: () => number;
+  recentLimit: number;
+}> = {}) {
+  const system = makeSystem();
+  const bus = new EventBus<SimEventMap>();
+  const logs = new LogStore(100);
+  let clock = now;
+  const engine = new EventEngine(system, bus, logs, {
+    enabled: true,
+    intervalMs: 1000,
+    probabilities: zeroProbabilities,
+    rng: rng(),
+    now: () => clock,
+    recentLimit: 2,
+    ...overrides,
+  });
+  return {
+    system,
+    bus,
+    logs,
+    engine,
+    advance: (ms: number) => {
+      clock += ms;
+    },
+  };
+}
 
 describe('catálogo de eventos', () => {
   it('define los siete eventos con valores válidos', () => {
@@ -208,5 +254,84 @@ describe('applyEvent', () => {
         request: { nodeId: 'node-general' },
       }).applied,
     ).toBe(false);
+  });
+});
+
+describe('EventEngine automático', () => {
+  it('no dispara con el generador apagado', () => {
+    const { engine } = makeEngine({ enabled: false, probabilities: { ...zeroProbabilities, task_arrival: 1 } });
+    engine.step(1000);
+    expect(engine.state.recent).toHaveLength(0);
+  });
+
+  it('dispara por probabilidad y respeta cooldown', () => {
+    const { engine, advance, system } = makeEngine({
+      probabilities: { ...zeroProbabilities, task_arrival: 1 },
+    });
+    engine.step(1000);
+    expect(system.pendingPool.size).toBeGreaterThan(0);
+    expect(engine.state.recent).toHaveLength(1);
+    advance(1000);
+    engine.step(1000);
+    expect(engine.state.recent).toHaveLength(1);
+    advance(2000);
+    engine.step(1000);
+    expect(engine.state.recent).toHaveLength(2);
+  });
+
+  it('un disparo fallido consume cooldown y contador', () => {
+    const { engine, system } = makeEngine({
+      probabilities: { ...zeroProbabilities, task_arrival: 1 },
+    });
+    system.submitPending({ type: 'custom' });
+    system.submitPending({ type: 'custom' });
+    system.submitPending({ type: 'custom' });
+    engine.step(1000);
+    const runtime = engine.state.events.find((event) => event.id === 'task_arrival')!;
+    expect(runtime.triggerCount).toBe(1);
+    expect(engine.state.recent[0].applied).toBe(false);
+  });
+
+  it('el disparo manual salta enabled, probabilidad y cooldown', () => {
+    const { engine, system } = makeEngine({
+      enabled: false,
+      probabilities: { ...zeroProbabilities, thermal_spike: 0 },
+    });
+    const payload = engine.trigger('thermal_spike', {
+      nodeId: 'node-1',
+      params: { magnitude: 4 },
+    });
+    expect(payload.applied).toBe(true);
+    expect(payload.source).toBe('manual');
+    expect(system.getNode('node-1')?.currentTemp).toBe(29);
+  });
+
+  it('emite alert además de event:triggered para synthetic_alert', () => {
+    const { engine, bus } = makeEngine();
+    const alerts: unknown[] = [];
+    bus.on('alert', (payload) => alerts.push(payload));
+    engine.trigger('synthetic_alert', { nodeId: 'node-1', params: { message: 'Prueba' } });
+    expect(alerts).toHaveLength(1);
+  });
+
+  it('recorta el feed reciente y resetRuntime limpia contadores', () => {
+    const { engine } = makeEngine();
+    engine.trigger('thermal_spike', { nodeId: 'node-1' });
+    engine.trigger('thermal_spike', { nodeId: 'node-2' });
+    engine.trigger('thermal_spike', { nodeId: 'node-1' });
+    expect(engine.state.recent).toHaveLength(2);
+    engine.resetRuntime();
+    expect(engine.state.recent).toHaveLength(0);
+    expect(engine.state.events.every((event) => event.triggerCount === 0)).toBe(true);
+  });
+});
+
+describe('EventEngine configuración', () => {
+  it('permite ajustar generador y evento en caliente', () => {
+    const { engine } = makeEngine();
+    engine.patchGenerator({ enabled: true, intervalMs: 2000 });
+    const updated = engine.patchEvent('thermal_spike', { probability: 0.5, cooldownMs: 100 });
+    expect(engine.state.generator).toMatchObject({ enabled: true, intervalMs: 2000 });
+    expect(updated).toMatchObject({ probability: 0.5, cooldownMs: 100 });
   });
 });
