@@ -188,7 +188,7 @@ const findRequestedNode = (
 const applyTaskArrival = (context: EventContext, request: EventRequest | undefined): EventOutcome => {
   const { system, now, rng } = context;
   const params = mergeParams('task_arrival', request);
-  const rawCount = params.count;
+  const rawCount = request?.params?.count;
   const count =
     typeof rawCount === 'number' && Number.isFinite(rawCount)
       ? clampInt(rawCount, 1, 3)
@@ -309,6 +309,7 @@ const applyNodeFailure = (context: EventContext, request: EventRequest | undefin
     return failure('node_failure', `${node.id} ya está en error`, node.id, request);
   }
   node.forceFailure(now);
+  node.pushEvent('event', `Fallo de nodo en ${node.id}`, undefined, { eventId: 'node_failure' });
   return {
     applied: true,
     nodeId: node.id,

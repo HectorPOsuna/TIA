@@ -53,6 +53,15 @@ describe('applyEvent', () => {
     expect(system.pendingPool.size).toBe(2);
   });
 
+  it('task_arrival automático elige un count aleatorio de 1 a 3', () => {
+    const system = makeSystem();
+    const outcome = applyEvent('task_arrival', { system, now, rng: rng(0.9) });
+    expect(outcome.applied).toBe(true);
+    expect(outcome.taskIds).toHaveLength(3);
+    expect(outcome.params).toMatchObject({ count: 3 });
+    expect(system.pendingPool.size).toBe(3);
+  });
+
   it('task_arrival con nodeId encola en la cola local', () => {
     const system = makeSystem();
     const outcome = applyEvent('task_arrival', {
@@ -122,6 +131,13 @@ describe('applyEvent', () => {
     expect(node.status).toBe('error');
     expect(node.toDto().stats.ok).toBe(false);
     expect(node.processingTask).not.toBeNull();
+  });
+
+  it('node_failure apila un evento en la pila del nodo', () => {
+    const system = makeSystem();
+    const node = system.getNode('node-1')!;
+    applyEvent('node_failure', { system, now, rng: rng(), request: { nodeId: 'node-1' } });
+    expect(node.getStackEntries().some((entry) => entry.kind === 'event')).toBe(true);
   });
 
   it('node_recovery reactiva y limpia fallos', () => {
