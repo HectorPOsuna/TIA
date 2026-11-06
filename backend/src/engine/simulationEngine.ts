@@ -116,11 +116,11 @@ export class SimulationEngine {
   private step(dtMs: number): void {
     this.tickCount += 1;
     this.deps.system.tickThermalAll(dtMs);
+    this.deps.events?.step(dtMs);
     if (this.telemetryLogEvery > 0 && this.tickCount % this.telemetryLogEvery === 0) {
       this.logTelemetry();
     }
     this.processTasks();
-    this.deps.events?.step(dtMs);
     this.evaluateRules();
 
     const now = Date.now();

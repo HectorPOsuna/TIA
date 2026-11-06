@@ -409,7 +409,7 @@ describe('EventEngine integración con el tick', () => {
     engine.pause();
     engine.stepOnce();
     expect(received).toHaveLength(1);
-    expect(system.pendingPool.size).toBeGreaterThan(0);
+    expect(system.workers.some((worker) => worker.processingTask !== null || worker.queueSize > 0)).toBe(true);
   });
 
   it('reset limpia los contadores del generador', () => {
