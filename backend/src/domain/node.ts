@@ -198,6 +198,14 @@ export class SimNode {
     }
   }
 
+  forceFailure(now: number): void {
+    this.failures += 1;
+    this.consecutiveFailures = Math.max(this.consecutiveFailures, this.maxConsecutiveFailures);
+    this.status = 'error';
+    this.updatedAt = now;
+    this.pushEvent('change', `Nodo ${this.id} forzado a error`);
+  }
+
   recover(now: number): void {
     if (this.consecutiveFailures > 0) {
       this.consecutiveFailures = 0;
