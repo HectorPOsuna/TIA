@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { EVENT_CATALOG, EVENT_IDS, applyEvent } from '../src/domain/events.js';
 import { SystemSimulation } from '../src/domain/system.js';
 import { EventBus } from '../src/engine/eventBus.js';
@@ -312,6 +312,59 @@ describe('EventEngine automático', () => {
     bus.on('alert', (payload) => alerts.push(payload));
     engine.trigger('synthetic_alert', { nodeId: 'node-1', params: { message: 'Prueba' } });
     expect(alerts).toHaveLength(1);
+  });
+
+  it('emite task:queued cuando la llegada apunta a un nodo', () => {
+    const { engine, bus } = makeEngine();
+    const queued: { nodeId: string; taskId: string }[] = [];
+    bus.on('task:queued', (payload) => queued.push({ nodeId: payload.nodeId, taskId: payload.task.id }));
+    const payload = engine.trigger('task_arrival', { nodeId: 'node-1', params: { count: 1 } });
+    expect(payload.applied).toBe(true);
+    expect(queued).toEqual([{ nodeId: 'node-1', taskId: payload.taskIds?.[0] }]);
+  });
+
+  it('emite task:pending por cada tarea del pool', () => {
+    const { engine, bus } = makeEngine();
+    const pending: string[] = [];
+    bus.on('task:pending', (payload) => pending.push(payload.task.id));
+    const payload = engine.trigger('task_arrival', { params: { count: 2 } });
+    expect(payload.applied).toBe(true);
+    expect(pending).toEqual(payload.taskIds);
+  });
+
+  it('convierte una excepción de applyEvent en applied=false', () => {
+    const { engine, system } = makeEngine();
+    vi.spyOn(system, 'submitPending').mockImplementation(() => {
+      throw new Error('boom');
+    });
+    const payload = engine.trigger('task_arrival', { params: { count: 1 } });
+    vi.restoreAllMocks();
+    expect(payload.applied).toBe(false);
+    expect(payload.message).toBe('error aplicando evento: boom');
+  });
+
+  it('emite event:triggered con origen manual y resultado aplicado', () => {
+    const { engine, bus } = makeEngine();
+    const events: unknown[] = [];
+    bus.on('event:triggered', (payload) => events.push(payload));
+    engine.trigger('thermal_spike', { nodeId: 'node-1', params: { magnitude: 4 } });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      eventId: 'thermal_spike',
+      source: 'manual',
+      applied: true,
+      nodeId: 'node-1',
+    });
+  });
+
+  it('omite un evento deshabilitado aunque su probabilidad sea 1', () => {
+    const { engine, system } = makeEngine({
+      probabilities: { ...zeroProbabilities, task_arrival: 1 },
+    });
+    engine.patchEvent('task_arrival', { enabled: false });
+    engine.step(1000);
+    expect(engine.state.recent).toHaveLength(0);
+    expect(system.pendingPool.size).toBe(0);
   });
 
   it('recorta el feed reciente y resetRuntime limpia contadores', () => {

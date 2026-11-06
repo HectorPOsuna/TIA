@@ -3,7 +3,7 @@ import type { LogType } from '../domain/types.js';
 import { parseQueryLevels, parseQueryLimit } from './validation.js';
 import type { AppContext } from './context.js';
 
-const LOG_TYPES: readonly LogType[] = ['system', 'api', 'rule', 'task', 'node', 'alert'];
+const LOG_TYPES: readonly LogType[] = ['system', 'api', 'rule', 'task', 'node', 'ai', 'alert', 'event'];
 
 export function logsRouter(ctx: AppContext): Router {
   const router = Router();
