@@ -130,6 +130,11 @@ tarea, tendencia, cola y pila LIFO). El **centro de control** es un `<dialog>` c
 (modelo, predicción a 15 s y recomendación), **Automatización** (control IA, reglas, pool y
 eficiencia con sparklines), **Sistema** y **Alertas**; las alertas también aparecen como toasts.
 
+Un botón flotante con la sonrisa de un bufón abre el **panel de eventos**: activa el generador
+probabilístico de tráfico y perturbaciones, ajusta intervalo, probabilidad y cooldown, y permite
+disparar cualquier evento a mano. El generador arranca apagado y el catálogo vive solo en memoria
+(el reinicio restablece los valores); en replay el panel se abre en solo lectura.
+
 Los últimos **600 estados** de la sesión se guardan en el navegador y alimentan el **replay** con
 línea de tiempo, reproducción automática y navegación paso a paso. Durante el replay la escena y el
 drawer son de solo lectura y la configuración del centro de control queda deshabilitada. El layout

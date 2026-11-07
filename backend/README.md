@@ -60,15 +60,25 @@ Por defecto escucha en `http://localhost:3000` con `GET /health` de verificació
 | `AI_CONTROL_ENABLED` | `false` | Arranca con el control IA en lazo cerrado |
 | `AI_CONTROL_ALLOW_SHUTDOWN` | `false` | Permite el apagado de emergencia |
 | `AI_CONTROL_*` | ver `.env.example` | Umbrales, cooldown, límites de carga y pausa manual |
+| `EVENTS_ENABLED` | `false` | Arranca el generador probabilístico de eventos |
+| `EVENTS_INTERVAL_MS` | `5000` | Intervalo entre evaluaciones del generador (250–3600000 ms) |
+| `EVENT_TASK_ARRIVAL_PROBABILITY` | `0.08` | Probabilidad de llegada de tareas |
+| `EVENT_THERMAL_SPIKE_PROBABILITY` | `0.02` | Probabilidad de pico térmico |
+| `EVENT_NODE_FAILURE_PROBABILITY` | `0.01` | Probabilidad de fallo de nodo |
+| `EVENT_NODE_RECOVERY_PROBABILITY` | `0.03` | Probabilidad de recuperación de nodo |
+| `EVENT_FAN_FAILURE_PROBABILITY` | `0.01` | Probabilidad de fallo de ventilador |
+| `EVENT_WORKLOAD_SURGE_PROBABILITY` | `0.02` | Probabilidad de pico de carga |
+| `EVENT_SYNTHETIC_ALERT_PROBABILITY` | `0.01` | Probabilidad de alerta sintética |
 
 ## Arquitectura
 
 Capa por directorio bajo `src/`:
 
 - `domain/` — reglas de negocio puras en TypeScript sin I/O: modelo térmico, colas de
-  prioridad, pila LIFO, nodos, sistema, dispatcher, store y evaluación de reglas, acciones.
-- `engine/` — `EventBus` tipado y `SimulationEngine`: avanza el tick (térmico → tareas y
-  dispatch → reglas) y emite eventos.
+  prioridad, pila LIFO, nodos, sistema, dispatcher, store y evaluación de reglas, acciones,
+  catálogo y efectos de eventos.
+- `engine/` — `EventBus` tipado y `SimulationEngine`: avanza el tick (térmico → eventos →
+  tareas y dispatch → reglas) y emite eventos.
 - `api/` — routers Express con validación zod y contexto compartido.
 - `infra/` — config de entorno y de BD, loader de reglas, logs, persistencia del log (JSONL),
   capa `Database`, `TimeSeriesSink` y Socket.IO. `PersistenceRepository` (implementado en
@@ -115,8 +125,9 @@ con tareas en su cola local las procesan antes que el pool.
   (`execute`, con placeholders nombrados `:nombre`), inserts por objeto (`insert` /
   `insertMany`) y `transaction` sobre una única conexión. El `TimeSeriesSink` se suscribe al
   `EventBus` y escribe las mediciones del esquema de `docs/guia-tecnica.md`:
-  `node:updated` → filas `telemetry`; `rule:triggered`, `task:queued/completed/pending` y
-  `alert` → filas `events`. El DDL se ejecuta al arranque desde `DB_SCHEMA_FILE` y la
+  `node:updated` → filas `telemetry`; `rule:triggered`, `task:queued/completed/pending`,
+  `alert` y `event:triggered` → filas `events` (`kind='sim_event'`, `type='event'`). El DDL se
+  ejecuta al arranque desde `DB_SCHEMA_FILE` y la
   escritura va por lotes (cada `DB_FLUSH_MS` o `DB_MAX_BUFFER` filas) con `insertMany`; si la
   BD falla solo se loguea, la simulación sigue. El `docker-compose.yml` de la raíz levanta
   MariaDB + phpMyAdmin (interpolando las `DB_*` del `.env` raíz).
@@ -199,9 +210,30 @@ predictivas usan la última `inference:completed` del nodo (TTL 60 s); sin predi
 regla no dispara. Los cambios se aplican en vivo: el motor re-carga las reglas cada tick (no hay
 reinicio), y se persisten en `RULES_FILE` al crear/editar/eliminar por API.
 
+### Eventos — `/api/events`
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/` | `{ generator, events, recent }`: estado del generador, catálogo y últimos disparos |
+| PATCH | `/` | `{ enabled?, intervalMs? }`: activa/detiene el generador y ajusta su intervalo |
+| PATCH | `/:id` | `{ enabled?, probability?, cooldownMs? }`: ajusta un evento del catálogo |
+| POST | `/:id/trigger` | `{ nodeId?, params? }`: disparo manual |
+
+El catálogo es `task_arrival`, `thermal_spike`, `node_failure`, `node_recovery`, `fan_failure`,
+`workload_surge` y `synthetic_alert`. El disparo manual ignora el estado del generador, la
+probabilidad y el cooldown. El automático consume cooldown y contador, y solo apunta a workers
+elegibles (`node_recovery` únicamente a nodos en `error`); las perturbaciones rechazan el nodo
+general. El estado vive en memoria y se restablece al reiniciar.
+
+```bash
+curl http://localhost:3000/api/events
+curl -X PATCH http://localhost:3000/api/events -H "Content-Type: application/json" -d '{"enabled":true,"intervalMs":2000}'
+curl -X POST http://localhost:3000/api/events/thermal_spike/trigger -H "Content-Type: application/json" -d '{"nodeId":"node-1","params":{"magnitude":6}}'
+```
+
 ### Logs — `/api/logs`
 
-`GET /api/logs?level=info,warning,critical&type=rule|task|node|api|ai&nodeId=node-1&since=<ms>&limit=<n>`.
+`GET /api/logs?level=info,warning,critical&type=rule|task|node|api|ai|alert|event&nodeId=node-1&since=<ms>&limit=<n>`.
 `DELETE /api/logs` limpia el buffer y el archivo persistido.
 
 ### Control IA — `/api/ai`
@@ -240,6 +272,7 @@ Conecta `io("http://localhost:3000")`. Todos los paquetes llegan como
 | `alert` | `{ nodeId, message, level }` |
 | `inference:completed` | Predicción del worker (`nodeId`, `predictedTemp`, `actualTemp`, …) |
 | `ai:action` | Acción aplicada por el control IA (`nodeId`, `action`, `reason`, `offset`, …) |
+| `event:triggered` | Evento de simulación (`eventId`, `name`, `category`, `source`, `applied`, `message`, `nodeId?`, `taskIds?`, `params?`, `at`) |
 
 El cliente puede suscribirse a un nodo concreto:
 

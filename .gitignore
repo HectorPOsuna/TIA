@@ -34,4 +34,7 @@ ml/out/
 ml/data/
 *.joblib
 
+# Scratch de agentes
+.superpowers/
+
 # Miscellaneous
