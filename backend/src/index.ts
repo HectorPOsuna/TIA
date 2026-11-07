@@ -18,7 +18,7 @@ import { InferenceWorker } from './infra/ai/inferenceWorker.js';
 import { Database } from './infra/database.js';
 import { LogStore } from './infra/logger.js';
 import { MemoryPersistence } from './infra/persistence.js';
-import { loadRulesFromFile, saveRulesToFile } from './infra/rulesLoader.js';
+import { loadRulesFromFile } from './infra/rulesLoader.js';
 import { attachSockets } from './infra/sockets.js';
 import { TimeSeriesSink } from './infra/timeseriesSink.js';
 
@@ -37,9 +37,6 @@ const system = new SystemSimulation({
 });
 
 const rules = new RuleStore(loadRulesFromFile(config.RULES_FILE));
-rules.onChange = () => {
-  saveRulesToFile(config.RULES_FILE, rules.list());
-};
 const logs = new LogStore(config.LOG_CAPACITY, config.LOG_FILE, {
   console: config.LOG_CONSOLE,
   level: config.LOG_LEVEL,

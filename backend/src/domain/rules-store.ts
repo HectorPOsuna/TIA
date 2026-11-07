@@ -3,7 +3,6 @@ import type { Rule, RuleInput } from './types.js';
 
 export class RuleStore {
   private readonly rules = new Map<string, Rule>();
-  onChange?: () => void;
 
   constructor(initial: RuleInput[] = []) {
     for (const input of initial) {
@@ -34,7 +33,6 @@ export class RuleStore {
       triggerCount: 0,
     };
     this.rules.set(rule.id, rule);
-    this.onChange?.();
     return rule;
   }
 
@@ -45,16 +43,11 @@ export class RuleStore {
     }
     const updated: Rule = { ...current, ...patch, id: current.id };
     this.rules.set(id, updated);
-    this.onChange?.();
     return updated;
   }
 
   remove(id: string): boolean {
-    const removed = this.rules.delete(id);
-    if (removed) {
-      this.onChange?.();
-    }
-    return removed;
+    return this.rules.delete(id);
   }
 
   resetTriggerCounters(): void {
