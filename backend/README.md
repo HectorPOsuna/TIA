@@ -44,7 +44,7 @@ Por defecto escucha en `http://localhost:3000` con `GET /health` de verificació
 | `LOG_TELEMETRY_EVERY` | `5` | Línea de telemetría (temps y media) cada N ticks; `0` desactiva |
 | `MAX_CONSECUTIVE_FAILURES` | `5` | Lecturas fallidas consecutivas antes de marcar el sensor en error |
 | `PENDING_POOL_CAPACITY` | `100` | Capacidad del pool global de tareas pendientes (cola de prioridad) |
-| `RULES_FILE` | `data/default-rules.json` | Ruta del JSON de reglas iniciales |
+| `RULES_FILE` | `data/default-rules.json` | Ruta del JSON semilla de reglas (se recarga al arrancar) |
 | `DB_ENABLED` | `true` | Activa el escritor time-series hacia MariaDB/MySQL |
 | `DB_HOST` | `localhost` | Host de la BD (`db` dentro de Docker) |
 | `DB_PORT` | `3306` | Puerto de la BD |
@@ -116,9 +116,9 @@ con tareas en su cola local las procesan antes que el pool.
   reescribe desde memoria para respetar el mismo límite. Al arrancar, el buffer se restaura
   desde el archivo (las líneas corruptas se ignoran). Vaciar el log con `DELETE /api/logs`
   también vacía el archivo.
-- **Reglas**: `RULES_FILE` es la semilla inicial; cada alta/baja/modificación por API se
-  sincroniza de vuelta al mismo archivo (escritura atómica, sin campos runtime como
-  `triggerCount`).
+- **Reglas**: `RULES_FILE` es una semilla de solo lectura que se carga al arrancar. Las
+  altas/bajas/modificaciones por API viven solo en memoria: al reiniciar se restablecen las
+  reglas originales del archivo.
 - **BD time-series**: si `DB_ENABLED`, el bootstrap abre una **conexión única estilo PDO** —
   la capa `infra/database.ts` (`Database`) centraliza el pool de `mysql2` leyendo la config
   de `config/database.ts` (`loadDatabaseSettings`) y ofrece statements **preparados**
@@ -208,7 +208,7 @@ Por defecto `enabled=true`, `cooldownMs=30000`, `subject='any'`. Con `subject=no
 obligatorio `nodeId`. `status` numérico: `0` activo, `1` inactivo, `2` en error. Las métricas
 predictivas usan la última `inference:completed` del nodo (TTL 60 s); sin predicción fresca, la
 regla no dispara. Los cambios se aplican en vivo: el motor re-carga las reglas cada tick (no hay
-reinicio), y se persisten en `RULES_FILE` al crear/editar/eliminar por API.
+reinicio) y viven solo en memoria; al reiniciar se recargan desde `RULES_FILE`.
 
 ### Eventos — `/api/events`
 

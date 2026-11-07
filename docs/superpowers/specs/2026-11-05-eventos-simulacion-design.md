@@ -51,7 +51,7 @@ duplica el reloj. Descartado.
 
 ### C. Reutilizar reglas reactivas
 
-Las reglas son umbrales deterministas y persistidas. No representan probabilidad por evento ni
+Las reglas son umbrales deterministas en memoria. No representan probabilidad por evento ni
 perturbaciones sin métricas artificiales. Descartado.
 
 ## Catálogo

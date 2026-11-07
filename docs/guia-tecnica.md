@@ -385,11 +385,9 @@ Definidas en `backend/src/config.ts` (schema zod con default), ejemplo en `backe
   middleware HTTP de `httpServer.ts` registra cada petición (`LOG_HTTP`) y el motor emite
   una línea de telemetría periódica con las temperaturas y su media (`LOG_TELEMETRY_EVERY`
   ticks); todo ello entra también al buffer y al archivo.
-- **Reglas** (`infra/rulesLoader.ts`): `RULES_FILE` es la semilla inicial. El `RuleStore`
-  expone `onChange`, enganchado en `index.ts` a `saveRulesToFile`, de modo que crear,
-  editar o eliminar reglas por API sincroniza el archivo (escritura atómica `.tmp`+rename,
-  sin los campos runtime `id`/`lastTriggeredAt`/`triggerCount`). El arranque no regraba el
-  archivo porque `onChange` se asigna tras construir el store.
+- **Reglas** (`infra/rulesLoader.ts`): `RULES_FILE` es una semilla de solo lectura que se
+  carga al arrancar. Crear, editar o eliminar reglas por API vive solo en memoria: no se
+  reescribe el archivo y reiniciar restablece las reglas originales.
 - **BD time-series**: con `DB_ENABLED` (defecto `true`), el bootstrap abre una **conexión
   única estilo PDO** (`infra/database.ts`, config de `config/database.ts`) y un
   `TimeSeriesSink` se suscribe al `EventBus` escribiendo por lotes en MariaDB/MySQL siguiendo
@@ -596,8 +594,9 @@ Añade un objeto válido en `backend/data/default-rules.json`. El `rulesLoader` 
 
 ### 4. Persistencia real
 
-El log persiste en JSONL (`LOG_FILE`), las reglas se sincronizan con `RULES_FILE` y la
-telemetría/eventos se escriben en MariaDB/MySQL vía la capa `Database` + `TimeSeriesSink`
+El log persiste en JSONL (`LOG_FILE`), las reglas se recargan de `RULES_FILE` en cada arranque
+(las mutaciones en vivo no se persisten) y la telemetría/eventos se escriben en MariaDB/MySQL
+vía la capa `Database` + `TimeSeriesSink`
 (véase "Persistencia (S5)" y "Capa de base de datos"). Para nuevas consultas/escrituras
 reutiliza la conexión única inyectada (`config/database.ts` → `index.ts`): usa
 `execute`/`transaction` con placeholders nombrados, nunca credenciales ni SQL ensamblado en
@@ -618,7 +617,7 @@ pnpm.cmd run typecheck && pnpm.cmd run test && pnpm.cmd run build
 
 - `typecheck` falla con imports/locals sin usar (`noUnusedLocals`/`noUnusedParameters`).
 - 86 tests vitest en `backend/test/` (térmico, colas de prioridad/pila, dispatcher, reglas con
-  métricas predictivas, acciones, persistencia de log y de reglas, capa `Database` y `TimeSeriesSink`).
+  métricas predictivas, acciones, persistencia de log, capa `Database` y `TimeSeriesSink`).
 - El frontend valida con `npm.cmd run lint` y `npm.cmd run build`.
 
 Mensajes en español, imperativo, con scope: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. Ejemplos: `feat(backend): ...`, `feat(frontend): ...`. No commitear artefactos de build (`node_modules/`, `dist/`, `.pio/`).

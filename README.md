@@ -79,7 +79,8 @@ La semilla incluye «Ventilador por predicción alta» (`predictedDelta > 1.5` �
 Cada `rule:triggered` registra `action`, `applied`, `reason?`, `taskId?` y `predictedTemp?`, y la
 telemetría los persiste en `events` (`kind=rule`). Así se audita no solo que la regla se disparó,
 sino si la acción tuvo efecto. El CRUD sigue por API (`/api/rules`); el panel muestra los últimos
-disparos con su resultado.
+disparos con su resultado. Las altas, bajas y ediciones viven solo en memoria: al reiniciar se
+recargan las 7 reglas semilla.
 
 ## Base de datos (BD time-series)
 
