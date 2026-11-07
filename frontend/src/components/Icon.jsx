@@ -72,6 +72,14 @@ const ICONS = {
     </>
   ),
   moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
+  joker: (
+    <>
+      <path d="M4 8c2.5-1.5 5-2 8-2s5.5.5 8 2" />
+      <path d="M5 12c1.5 4.5 4 7 7 7s5.5-2.5 7-7" />
+      <path d="M7 12l2 3 1.5-2 1.5 3 1.5-3 1.5 2 2-3" />
+      <path d="M8 8.5 7 10M16 8.5 17 10" />
+    </>
+  ),
 }
 
 export function Icon({ name, size = 16, className, ...rest }) {

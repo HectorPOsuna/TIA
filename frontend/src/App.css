@@ -779,6 +779,235 @@
   margin-top: 12px;
 }
 
+/* ---------- Event panel ---------- */
+.event-launcher {
+  position: absolute;
+  z-index: 35;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.event-fab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--glass-strong);
+  color: var(--text-strong);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+}
+
+.event-fab:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.event-fab[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.event-panel {
+  width: min(380px, calc(100vw - 32px));
+  max-height: 70dvh;
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--bg-panel);
+  box-shadow: var(--shadow);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.event-panel__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.event-panel__head > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.event-panel__head h2 {
+  font-size: 16px;
+}
+
+.event-panel__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.event-panel .readonly-banner {
+  margin-bottom: 10px;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 8px;
+}
+
+.event-panel__error {
+  margin: 8px 0 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.event-panel__body {
+  min-width: 0;
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.event-panel__body:disabled {
+  opacity: 0.62;
+}
+
+.event-panel__controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elev);
+}
+
+.event-panel__controls .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.event-panel__controls .field input {
+  width: 100%;
+}
+
+.event-panel__controls .btn {
+  flex: none;
+}
+
+.event-panel__section-title {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+}
+
+.event-list {
+  gap: 6px;
+}
+
+.event-row {
+  display: block;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-elev);
+}
+
+.event-row__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.event-row__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text-strong);
+  cursor: pointer;
+}
+
+.event-row__toggle input {
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.event-row__desc {
+  margin: 3px 0 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.event-row__controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+  align-items: end;
+  margin-top: 6px;
+}
+
+.event-row__controls .field {
+  min-width: 0;
+}
+
+.event-row__controls .field > span {
+  font-size: 9px;
+}
+
+.event-row__controls .field input {
+  width: 100%;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.event-row__controls .btn {
+  align-self: end;
+}
+
+.event-feed {
+  margin-top: 4px;
+}
+
+.event-feed__list {
+  max-height: 180px;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.event-feed__item {
+  display: block;
+  padding: 5px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.event-feed__item:last-child {
+  border-bottom: 0;
+}
+
+.event-feed__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.event-feed__msg {
+  margin: 2px 0 0;
+  color: var(--text);
+}
+
 /* ---------- Responsive scene ---------- */
 @media (max-width: 900px) {
   .scene-overlay--bl {
@@ -800,6 +1029,16 @@
 
   .toasts {
     top: 76px;
+  }
+
+  .event-launcher {
+    right: 8px;
+    bottom: 144px;
+  }
+
+  .event-panel {
+    width: calc(100vw - 16px);
+    max-height: 65dvh;
   }
 
   .node-drawer {

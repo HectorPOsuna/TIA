@@ -4,12 +4,15 @@ import { useSimulation } from './hooks/useSimulation.js'
 import { useHistory } from './hooks/useHistory.js'
 import { useInference } from './hooks/useInference.js'
 import { useAiControl } from './hooks/useAiControl.js'
+import { useEvents } from './hooks/useEvents.js'
 import { useReducedMotion } from './hooks/useReducedMotion.js'
 import { useTheme } from './hooks/useTheme.js'
 import { Hud } from './components/Hud.jsx'
+import { Icon } from './components/Icon.jsx'
 import { NodeDock } from './components/NodeDock.jsx'
 import { NodeDrawer } from './components/NodeDrawer.jsx'
 import { ControlCenter } from './components/ControlCenter.jsx'
+import { EventPanel } from './components/EventPanel.jsx'
 import { ReplayBar } from './components/ReplayBar.jsx'
 import { ToastStack } from './components/ToastStack.jsx'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary.jsx'
@@ -25,11 +28,13 @@ export default function App() {
   const history = useHistory()
   const inference = useInference()
   const aiControl = useAiControl()
+  const events = useEvents()
   const reducedMotion = useReducedMotion()
   const { theme, toggle: toggleTheme } = useTheme()
 
   const [selectedId, setSelectedId] = useState(null)
   const [controlTab, setControlTab] = useState(null)
+  const [eventsOpen, setEventsOpen] = useState(false)
   const [target, setTarget] = useState('')
   const [hintVisible, setHintVisible] = useState(true)
   const [toasts, setToasts] = useState([])
@@ -76,6 +81,7 @@ export default function App() {
 
   const closeDrawer = useCallback(() => setSelectedId(null), [])
   const closeControl = useCallback(() => setControlTab(null), [])
+  const closeEvents = useCallback(() => setEventsOpen(false), [])
 
   const dismissToast = useCallback((id) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id))
@@ -207,6 +213,33 @@ export default function App() {
               Haz clic en un nodo o usa la lista para ver su detalle
             </div>
           )}
+
+          <div className="event-launcher">
+            <button
+              type="button"
+              className="event-fab"
+              onClick={() => setEventsOpen((open) => !open)}
+              aria-label={eventsOpen ? 'Cerrar panel de eventos' : 'Abrir panel de eventos'}
+              aria-expanded={eventsOpen}
+              aria-controls="event-panel"
+              title="Eventos de simulación"
+            >
+              <Icon name="joker" size={22} />
+            </button>
+            {eventsOpen && (
+              <EventPanel
+                id="event-panel"
+                state={events.state}
+                error={events.error}
+                busy={events.busy}
+                readOnly={isReplay}
+                onClose={closeEvents}
+                onGenerator={events.patchGenerator}
+                onEvent={events.patchEvent}
+                onTrigger={events.trigger}
+              />
+            )}
+          </div>
 
           {!isReplay && <ToastStack toasts={toasts} onDismiss={dismissToast} />}
         </main>
