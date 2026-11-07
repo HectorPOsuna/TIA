@@ -4,6 +4,7 @@ import type { EventBus } from '../engine/eventBus.js';
 import type {
   AiActionPayload,
   AlertPayload,
+  EventTriggeredPayload,
   InferencePayload,
   RuleTriggeredPayload,
   SimEventMap,
@@ -109,6 +110,22 @@ export class TimeSeriesSink {
         },
       );
     });
+    bus.on('event:triggered', (payload: EventTriggeredPayload) => {
+      this.pushEvent(
+        payload.at,
+        payload.nodeId,
+        'sim_event',
+        'event',
+        payload.eventId,
+        payload.message,
+        {
+          source: payload.source,
+          applied: payload.applied,
+          taskIds: payload.taskIds ?? null,
+          params: payload.params ?? null,
+        },
+      );
+    });
   }
 
   private pushInference(payload: InferencePayload): void {
@@ -165,7 +182,7 @@ export class TimeSeriesSink {
     ts: number,
     nodeId: string | undefined,
     kind: string,
-    type: 'rule' | 'task' | 'alert' | 'inference' | 'ai',
+    type: 'rule' | 'task' | 'alert' | 'inference' | 'ai' | 'event',
     label: string,
     message: string,
     meta: Record<string, unknown> | null,

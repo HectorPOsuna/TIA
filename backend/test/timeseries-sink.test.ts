@@ -178,6 +178,41 @@ describe('TimeSeriesSink eventos', () => {
     expect(params.slice(14, 21)[2]).toBe('task');
     expect(JSON.parse(params[20] as string)).toMatchObject({ taskId: 'task-1' });
   });
+
+  it('mapea event:triggered a una fila sim_event', async () => {
+    const bus = new EventBus<SimEventMap>();
+    const { driver } = makeSink(bus, { maxBuffer: 1 });
+
+    bus.emit('event:triggered', {
+      eventId: 'thermal_spike',
+      name: 'Pico térmico',
+      category: 'perturbation',
+      source: 'manual',
+      nodeId: 'node-1',
+      applied: true,
+      message: 'Pico de +6 °C',
+      params: { magnitude: 6 },
+      at: 1_700_000_000_003,
+    });
+    await flushSettle();
+
+    const events = driver.calls.filter((call) => call.sql.startsWith('INSERT INTO `events`'));
+    expect(events).toHaveLength(1);
+    const params = events[0].params as unknown[];
+    expect(params.slice(0, 6)).toEqual([
+      1_700_000_000_003,
+      'node-1',
+      'sim_event',
+      'event',
+      'thermal_spike',
+      'Pico de +6 °C',
+    ]);
+    expect(JSON.parse(params[6] as string)).toMatchObject({
+      source: 'manual',
+      applied: true,
+      params: { magnitude: 6 },
+    });
+  });
 });
 
 describe('TimeSeriesSink errores', () => {

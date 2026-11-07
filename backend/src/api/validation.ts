@@ -58,6 +58,26 @@ export const enqueueTaskSchema = z.object({
   payload: paramsRecord.optional(),
 });
 
+export const eventGeneratorPatchSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    intervalMs: z.number().int().min(250).max(3_600_000).optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'No se enviaron campos para actualizar' });
+
+export const eventPatchSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    probability: z.number().min(0).max(1).optional(),
+    cooldownMs: z.number().int().min(0).max(3_600_000).optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'No se enviaron campos para actualizar' });
+
+export const eventTriggerSchema = z.object({
+  nodeId: z.string().min(1).optional(),
+  params: paramsRecord.optional(),
+});
+
 export const systemPatchSchema = z
   .object({
     targetTemp: temperatureSchema.optional(),

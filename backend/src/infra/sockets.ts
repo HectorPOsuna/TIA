@@ -16,6 +16,7 @@ const EVENT_NAMES: readonly SocketEventName[] = [
   'alert',
   'inference:completed',
   'ai:action',
+  'event:triggered',
 ];
 
 interface SocketPacket {

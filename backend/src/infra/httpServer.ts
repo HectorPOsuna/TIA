@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import { aiRouter } from '../api/ai.routes.js';
+import { eventsRouter } from '../api/events.routes.js';
 import { inferenceRouter } from '../api/inference.routes.js';
 import { logsRouter } from '../api/logs.routes.js';
 import { nodesRouter } from '../api/nodes.routes.js';
@@ -48,6 +49,7 @@ export function buildHttpServer(ctx: AppContext, corsOrigin: string, httpLogging
   app.use('/api/tasks', tasksRouter(ctx));
   app.use('/api/inference', inferenceRouter(ctx));
   app.use('/api/ai', aiRouter(ctx));
+  app.use('/api/events', eventsRouter(ctx));
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'recurso no encontrado' });
