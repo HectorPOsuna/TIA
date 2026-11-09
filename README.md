@@ -22,7 +22,7 @@ Ver [backend/README.md](backend/README.md) para API REST, eventos WebSocket, mod
 cd backend
 pnpm.cmd install
 pnpm.cmd dev        # http://localhost:3000
-pnpm.cmd run test   # 86 tests vitest
+pnpm.cmd run test   # 146 tests vitest
 pnpm.cmd run build
 ```
 
@@ -151,6 +151,8 @@ pintado para evitar el destello.
 cd frontend
 npm.cmd install
 npm.cmd run dev     # Vite con proxy a /api y /socket.io -> localhost:3000
+npm.cmd test        # 11 tests node:test
+npm.cmd run lint
 ```
 
 ## Qué se eliminó

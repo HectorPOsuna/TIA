@@ -4,9 +4,9 @@ WAItt (acrónimo del **Sistema de cuidado del agua mediante técnicas de intelig
 
 ## Comandos
 - Los shims `pnpm`/`npm` de PowerShell están bloqueados por la policy de ejecución: usa siempre `pnpm.cmd`/`npm.cmd`.
-- Backend (`backend/`): `pnpm.cmd install` · `pnpm.cmd dev` (tsx watch, `http://localhost:3000`) · verificación con `pnpm.cmd run typecheck` + `pnpm.cmd run test` (vitest, 119 tests) + `pnpm.cmd run build` (emite a `dist/`). No hay lint. Un solo archivo de test: `pnpm.cmd run test test/<archivo>.test.ts` (los flags no se reenvían con `run`; los argumentos posicionales sí).
+- Backend (`backend/`): `pnpm.cmd install` · `pnpm.cmd dev` (tsx watch, `http://localhost:3000`) · verificación con `pnpm.cmd run typecheck` + `pnpm.cmd run test` (vitest, 146 tests) + `pnpm.cmd run build` (emite a `dist/`). No hay lint. Un solo archivo de test: `pnpm.cmd run test test/<archivo>.test.ts` (los flags no se reenvían con `run`; los argumentos posicionales sí).
 - `typecheck` falla si hay locals/parámetros sin usar (`noUnusedLocals`/`noUnusedParameters` en tsconfig).
-- Frontend (`frontend/`, JSX sin TypeScript, sin tests): `npm.cmd run dev` · `npm.cmd run build` · `npm.cmd run lint`.
+- Frontend (`frontend/`, JSX sin TypeScript): `npm.cmd run dev` · `npm.cmd test` (node:test, 11 tests) · `npm.cmd run build` · `npm.cmd run lint`.
 - ML (`ml/`, Python): entorno virtual `ml/.venv` (dependencias en `ml/requirements.txt`). `ml\.venv\Scripts\python -m ml.train [--write-db] [--no-ollama] [--since <fecha|epoch-ms>] entrena el pipeline analítico (lee telemetría de MariaDB, genera `ml/out/`); `ml\.venv\Scripts\python -m ml.predict --node <id>` infiere; `python -m ml.worker` es el worker de inferencia en vivo que consume el backend (JSON por stdin/stdout); `ml\.venv\Scripts\python -m pytest ml` corre 18 tests. No commitees `ml/.venv/`, `ml/out/` ni `ml/data/` (gitignoreados).
 - Releases: `pnpm.cmd run release` en `backend/` valida (typecheck+test+build), computa la versión desde los commits convencionales, regenera el `CHANGELOG.md` de la raíz, commitea y crea el tag `vX.Y.Z`. `pnpm.cmd run release:dry` solo muestra lo que haría.
 

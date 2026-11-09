@@ -616,8 +616,10 @@ pnpm.cmd run typecheck && pnpm.cmd run test && pnpm.cmd run build
 ```
 
 - `typecheck` falla con imports/locals sin usar (`noUnusedLocals`/`noUnusedParameters`).
-- 86 tests vitest en `backend/test/` (térmico, colas de prioridad/pila, dispatcher, reglas con
-  métricas predictivas, acciones, persistencia de log, capa `Database` y `TimeSeriesSink`).
-- El frontend valida con `npm.cmd run lint` y `npm.cmd run build`.
+- 146 tests vitest en `backend/test/` (térmico, colas de prioridad/pila, dispatcher, reglas con
+  métricas predictivas, acciones, persistencia de log, capa `Database`, `TimeSeriesSink`, estrés,
+  calibración térmica, fallos, WebSocket y configuración).
+- El frontend valida con `npm.cmd test` (11 tests `node:test`), `npm.cmd run lint` y `npm.cmd run build`.
+- Resultados de estrés, calibración y tolerancia a fallos en [pruebas-calibracion.md](pruebas-calibracion.md).
 
 Mensajes en español, imperativo, con scope: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. Ejemplos: `feat(backend): ...`, `feat(frontend): ...`. No commitear artefactos de build (`node_modules/`, `dist/`, `.pio/`).
