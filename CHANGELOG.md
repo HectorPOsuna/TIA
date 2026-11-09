@@ -3,6 +3,31 @@
 Todas las notas significativas de los cambios de WAItt se documentan en este archivo.
 
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
+## [1.8.0](https://github.com/HectorPOsuna/TIA/compare/v1.7.0...v1.8.0) (2026-11-09)
+
+### Añadido
+
+* **backend:** añade catálogo y efectos de eventos ([ac1b0e0](https://github.com/HectorPOsuna/TIA/commit/ac1b0e0061fec0f2250dc38a0a36f3d817df8d51))
+* **backend:** añade motor probabilístico de eventos ([dd4dd08](https://github.com/HectorPOsuna/TIA/commit/dd4dd080e2e244775243863f40dab8bcec86ac2a))
+* **backend:** expone la API de eventos y los persiste ([0005066](https://github.com/HectorPOsuna/TIA/commit/0005066c6bb423822995acb86a58ada7b45b5b9d))
+* **backend:** integra el generador de eventos en el tick ([c475767](https://github.com/HectorPOsuna/TIA/commit/c4757676c5612af9c3ec008c393d55e9284057fd))
+* **backend:** restablece las reglas semilla al reiniciar ([f20fc3e](https://github.com/HectorPOsuna/TIA/commit/f20fc3e8e946c7df4bc31e824000a07c008e5c5f))
+* **frontend:** añade el panel flotante de eventos ([b01d036](https://github.com/HectorPOsuna/TIA/commit/b01d03661b8c2dd8a44f1415586d7c6a044f75ab))
+* **frontend:** añade modo claro y oscuro ([b74e16b](https://github.com/HectorPOsuna/TIA/commit/b74e16b73f1a62d8620c7e0c54fd3596aa4fc163))
+* **frontend:** rediseña los nodos 3D como racks de servidor ([583203d](https://github.com/HectorPOsuna/TIA/commit/583203d075ed758447bc02edfd76d28bb369c28b))
+
+### Corregido
+
+* **backend:** aplica eventos antes del despacho de tareas ([9f5dff4](https://github.com/HectorPOsuna/TIA/commit/9f5dff45033fba9586cfde95be37c0621d66606d))
+* **backend:** corrige efectos de eventos ([6a686ac](https://github.com/HectorPOsuna/TIA/commit/6a686ac0ace2e322e8f965d721b662077ccfa216))
+* **backend:** cubre pruebas y filtros del motor de eventos ([27aa877](https://github.com/HectorPOsuna/TIA/commit/27aa87722e172fd249bf05eeadb0e92d2391beb6))
+
+### Documentación
+
+* documenta el catálogo de eventos ([7e321fa](https://github.com/HectorPOsuna/TIA/commit/7e321fa6b323b13b3992f1466252c6a1797e15f2))
+* documenta el tema claro/oscuro y los racks de nodos ([7ee6091](https://github.com/HectorPOsuna/TIA/commit/7ee6091adcb786d5b75c003d97a55c3b5b821da3))
+* documenta las reglas semilla de solo lectura ([dc9c40c](https://github.com/HectorPOsuna/TIA/commit/dc9c40c14a3aa82595bacff29b2a072acaa93bc7))
+
 ## [1.7.0](https://github.com/HectorPOsuna/TIA/compare/v1.6.0...v1.7.0) (2026-10-29)
 
 ### Añadido
