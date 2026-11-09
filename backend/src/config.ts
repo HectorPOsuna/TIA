@@ -10,7 +10,7 @@ const boolFromEnv = (defaultValue: boolean) =>
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   TICK_MS: z.coerce.number().int().min(50).max(60_000).default(1000),
-  INITIAL_NODES: z.coerce.number().int().min(1).max(50).default(3),
+  INITIAL_NODES: z.coerce.number().int().min(1).max(200).default(3),
   INITIAL_TEMP: z.coerce.number().min(-60).max(150).default(25),
   TARGET_TEMP: z.coerce.number().min(-60).max(150).default(30),
   AMBIENT_TEMP: z.coerce.number().min(-60).max(150).default(20),
