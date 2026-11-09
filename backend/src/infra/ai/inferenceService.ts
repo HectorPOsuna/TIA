@@ -123,36 +123,43 @@ export class InferenceService {
     samples: Sample[],
     horizonMs?: number,
   ): Promise<InferenceOutcome> {
-    const horizon = horizonMs ?? this.opts.horizonMs;
-    const resp = await this.worker.predict({
-      nodeId,
-      samples: samples.map((s) => ({
-        ts: s.ts,
-        currentTemp: s.currentTemp,
-        targetTemp: s.targetTemp,
-        ambientTemp: s.ambientTemp,
-        workload: s.workload,
-        status: s.status,
-        fanActive: s.fanActive,
-        queueLength: s.queueLength,
-        stackSize: s.stackSize,
-      })),
-      horizonMs: horizon,
-    });
-    if (!resp.ok || resp.predictedTemp === undefined) {
-      return { ok: false, error: resp.error ?? 'sin predicción' };
+    try {
+      const horizon = horizonMs ?? this.opts.horizonMs;
+      const resp = await this.worker.predict({
+        nodeId,
+        samples: samples.map((s) => ({
+          ts: s.ts,
+          currentTemp: s.currentTemp,
+          targetTemp: s.targetTemp,
+          ambientTemp: s.ambientTemp,
+          workload: s.workload,
+          status: s.status,
+          fanActive: s.fanActive,
+          queueLength: s.queueLength,
+          stackSize: s.stackSize,
+        })),
+        horizonMs: horizon,
+      });
+      if (!resp.ok || resp.predictedTemp === undefined) {
+        return { ok: false, error: resp.error ?? 'sin predicción' };
+      }
+      const actualTemp = samples.length > 0 ? samples[samples.length - 1].currentTemp : Number.NaN;
+      return {
+        ok: true,
+        nodeId,
+        predictedTemp: resp.predictedTemp,
+        actualTemp,
+        horizonMs: horizon,
+        modelVersion: resp.modelVersion ?? 'unknown',
+        latencyMs: resp.latencyMs ?? 0,
+        featuresHash: resp.featuresHash,
+        at: Date.now(),
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
-    const actualTemp = samples.length > 0 ? samples[samples.length - 1].currentTemp : Number.NaN;
-    return {
-      ok: true,
-      nodeId,
-      predictedTemp: resp.predictedTemp,
-      actualTemp,
-      horizonMs: horizon,
-      modelVersion: resp.modelVersion ?? 'unknown',
-      latencyMs: resp.latencyMs ?? 0,
-      featuresHash: resp.featuresHash,
-      at: Date.now(),
-    };
   }
 }
