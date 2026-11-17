@@ -14,6 +14,17 @@ Simulador de monitorización térmica que replica el comportamiento del antiguo 
 
 No hay hardware ni código Arduino: el GitHub Actions / histórico lo conserva, pero el árbol actual es 100 % simulado.
 
+## Documentación
+
+| Documento | Para qué sirve |
+|---|---|
+| [Guía de Usuario](docs/guia-usuario.md) | Arranque, interfaz, reglas, IA, eventos, replay y solución de problemas |
+| [Guía Técnica](docs/guia-tecnica.md) | Arquitectura, dominio, API, WebSocket, BD, ML e inferencia |
+| [Guía Junior](docs/guia-junior.md) | Onboarding guiado, diagramas, recetas y ejercicios |
+| [Pruebas y calibración](docs/pruebas-calibracion.md) | Estrés, tolerancia a fallos y límites del modelo |
+
+Referencias específicas: [backend/README.md](backend/README.md) para la API REST y [ml/README.md](ml/README.md) para el pipeline analítico.
+
 ## Backend
 
 Ver [backend/README.md](backend/README.md) para API REST, eventos WebSocket, modelo térmico, reglas e integración con el frontend.
@@ -25,6 +36,8 @@ pnpm.cmd dev        # http://localhost:3000
 pnpm.cmd run test   # 146 tests vitest
 pnpm.cmd run build
 ```
+
+El backend usa `PORT=3000` por defecto. Si cambias el puerto, actualiza también el target de `/api` y `/socket.io` en `frontend/vite.config.js` y `CORS_ORIGIN`.
 
 ### Inferencia IA en vivo (S7)
 
@@ -104,12 +117,11 @@ anomalías por residuo de predicción y redacta avisos con Ollama (qwen3). Ver
 [ml/README.md](ml/README.md).
 
 ```bash
-cd ml
-.\.venv\Scripts\python -m ml.train            # entrena y genera ml/out/ (sin tocar la BD)
-.\.venv\Scripts\python -m ml.train --write-db # además inserta las alertas en la tabla events
-.\.venv\Scripts\python -m ml.train --since 2026-10-22T00:00:00Z  # solo telemetría reciente
-.\.venv\Scripts\python -m ml.predict --node node-1
-.\.venv\Scripts\python -m pytest tests        # 18 tests
+ml\.venv\Scripts\python -m ml.train            # entrena y genera ml/out/ (sin escribir en la BD)
+ml\.venv\Scripts\python -m ml.train --write-db # además inserta las alertas en la tabla events
+ml\.venv\Scripts\python -m ml.train --since 2026-10-22T00:00:00Z  # solo telemetría reciente
+ml\.venv\Scripts\python -m ml.predict --node node-1
+ml\.venv\Scripts\python -m pytest ml           # 18 tests
 ```
 
 Resultado de referencia de la sesión de reentrenamiento con la nueva dinámica (horizonte 15 s,
@@ -128,15 +140,16 @@ ventilador, cola y pila. Un **HUD flotante** resume estado,
 media, nodos activos, errores, IA y objetivo; el **dock de nodos** (flechas, Home y End) y la propia
 escena seleccionan un nodo, que abre un **drawer** de detalle (objetivo ±5°, ventilador, encolar
 tarea, tendencia, cola y pila LIFO). El **centro de control** es un `<dialog>` con pestañas **IA**
-(modelo, predicción a 15 s y recomendación), **Automatización** (control IA, reglas, pool y
-eficiencia con sparklines), **Sistema** y **Alertas**; las alertas también aparecen como toasts.
+(modelo, predicción a 15 s, recomendación y control IA), **Automatización** (reglas y pool),
+**Sistema** (eficiencia con sparklines y reinicio) y **Alertas**; las alertas también aparecen como
+toasts.
 
 Un botón flotante con la sonrisa de un bufón abre el **panel de eventos**: activa el generador
 probabilístico de tráfico y perturbaciones, ajusta intervalo, probabilidad y cooldown, y permite
 disparar cualquier evento a mano. El generador arranca apagado y el catálogo vive solo en memoria
 (el reinicio restablece los valores); en replay el panel se abre en solo lectura.
 
-Los últimos **600 estados** de la sesión se guardan en el navegador y alimentan el **replay** con
+Los últimos **600 estados** de la sesión se acumulan en el navegador y alimentan el **replay** con
 línea de tiempo, reproducción automática y navegación paso a paso. Durante el replay la escena y el
 drawer son de solo lectura y la configuración del centro de control queda deshabilitada. El layout
 pasa a una columna en retrato y el drawer se convierte en hoja inferior; la escena respeta
@@ -150,7 +163,7 @@ pintado para evitar el destello.
 ```bash
 cd frontend
 npm.cmd install
-npm.cmd run dev     # Vite con proxy a /api y /socket.io -> localhost:3000
+npm.cmd run dev     # Vite; el proxy de /api y /socket.io debe apuntar al PORT del backend
 npm.cmd test        # 11 tests node:test
 npm.cmd run lint
 ```

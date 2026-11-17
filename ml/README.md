@@ -23,14 +23,13 @@ cuyos avisos, opcionalmente, se explican con Ollama (qwen3) y se vuelcan a la ta
 ## Uso
 
 ```bash
-cd ml
-.\.venv\Scripts\python -m ml.train            # preprocesa, entrena y evalúa
-.\.venv\Scripts\python -m ml.train --write-db # además inserta las alertas en events
-.\.venv\Scripts\python -m ml.train --no-ollama
-.\.venv\Scripts\python -m ml.train --since 2026-10-22T17:00:00Z  # solo datos desde una fecha/epoch
-.\.venv\Scripts\python -m ml.predict --node node-1
-.\.venv\Scripts\python -m ml.worker             # worker de inferencia en vivo (stdin/stdout JSON)
-.\.venv\Scripts\python -m pytest tests        # 18 tests
+ml\.venv\Scripts\python -m ml.train            # preprocesa, entrena y evalúa
+ml\.venv\Scripts\python -m ml.train --write-db # además inserta las alertas en events
+ml\.venv\Scripts\python -m ml.train --no-ollama
+ml\.venv\Scripts\python -m ml.train --since 2026-10-22T17:00:00Z  # solo datos desde una fecha/epoch
+ml\.venv\Scripts\python -m ml.predict --node node-1
+ml\.venv\Scripts\python -m ml.worker             # worker de inferencia en vivo (stdin/stdout JSON)
+ml\.venv\Scripts\python -m pytest ml           # 18 tests
 ```
 
 Tras un cambio de dinámica térmica, usa `--since` para entrenar solo con telemetría del
