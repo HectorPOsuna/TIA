@@ -2,190 +2,339 @@
 
 WAItt es el acrónimo del **Sistema de cuidado del agua mediante técnicas de inteligencia artificial y estrangulamiento térmico**.
 
-Guía para desarrolladores que van a **mantener o extender** el proyecto. Presupone lectura previa de la [Guía de Usuario](guia-usuario.md) y de `AGENTS.md`.
+Guía para desarrolladores que van a **mantener o extender** el proyecto. Presupone lectura previa de la [Guía de Usuario](guia-usuario.md), la [Guía Junior](guia-junior.md) y `AGENTS.md`.
 
-## Visión general de la arquitectura
+## 1. Visión general
 
-Dos aplicaciones independientes dentro del mismo repositorio, comunicadas por HTTP (REST) y WebSocket (Socket.IO).
+Tres piezas dentro del mismo repositorio:
 
+| Pieza | Tecnología | Carpeta | Función |
+|---|---|---|---|
+| Backend | Node.js/TypeScript, Express + Socket.IO | `backend/` | Simulación, API REST, WebSocket, persistencia y orquestación de IA |
+| Frontend | React 19 + Vite + Three.js | `frontend/` | Escaparate inmersivo, control y replay |
+| Pipeline analítico | Python, pandas, scikit-learn, Ollama | `ml/` | Entrenamiento, métricas, anomalías y worker de inferencia |
+
+No hay hardware ni firmware Arduino. El backend replica la lógica del antiguo sistema: modelo térmico, nodos con estados, colas de prioridad, pila LIFO, reglas reactivas y eventos.
+
+```mermaid
+flowchart LR
+    subgraph Browser["Navegador"]
+        UI["React 19 + Vite"]
+    end
+
+    subgraph Node["Backend Node.js/TypeScript"]
+        API["Express REST"]
+        WS["Socket.IO"]
+        BUS["EventBus tipado"]
+        ENG["SimulationEngine"]
+        EVT["EventEngine"]
+        DOM["Dominio puro<br/>SystemSimulation · RuleStore · aiControl"]
+        INF["InferenceService"]
+        CTRL["InferenceController"]
+        SINK["TimeSeriesSink"]
+        DB[("MariaDB / MySQL")]
+    end
+
+    subgraph Python["Proceso Python persistente"]
+        WRK["ml.worker"]
+        MODEL["model.joblib"]
+    end
+
+    UI -->|"HTTP /api"| API
+    UI -->|"WebSocket"| WS
+    WS -->|"eventos"| UI
+    API --> DOM
+    WS --- BUS
+    ENG --> DOM
+    ENG --> EVT
+    EVT --> DOM
+    BUS --> INF
+    INF --> WRK
+    WRK --> MODEL
+    INF -->|"inference:completed"| BUS
+    BUS --> CTRL
+    CTRL --> DOM
+    BUS --> SINK
+    SINK --> DB
 ```
-┌─────────────────────────┐        ┌──────────────────────────────────────────────┐
-│  Navegador (React 19)   │        │  Backend Node.js/TS (backend/)               │
-│                          │        │                                              │
-│  App.jsx  ── hooks ──┐  │        │  ┌─────────────┐   ┌────────────────────┐    │
-│                       │  │  fetch │  │ Express API │──▶│ AppContext         │    │
-│  useSimulation.js     │──┼───────▶│  │ (api/)      │   │ system · rules ·   │    │
-│  useRules.js          │  │        │  └─────────────┘   │ logs · engine · bus│    │
-│                       │  │        │  ┌─────────────┐   └─────────┬──────────┘    │
-│  socket.io-client ────┼──┼───────▶│  │ Socket.IO   │◀──(EventBus)─┴──▶ Motor      │
-└───────────────────────┘  │  ws    │  │ (infra/)    │   ┌──────────┐ ┌──────────┐ │
-                           │        │  └─────────────┘   │ System   │ │ RuleStore│ │
-                           ▼        │  /api + /socket.io │ Sim ·    │ │ · logs   │ │
-                      Vite dev      │  (proxy)           │ tasks ·  │ │ rules    │ │
-                      server        │                    │ stack    │ └──────────┘ │
-                       :5173        └────────────────────┴──────────┴──────────────┘
-```
 
-- El **dominio** no depende del transporte: tanto Express como Socket.IO se suscriben al mismo `EventBus<SimEventMap>`.
-- El motor emite eventos (`state:update`, `node:updated`, …) y el bus los reenvía, por un lado, a los clientes WebSocket y, por otro, a cualquier suscriptor interno.
+### 1.1 Flujo de datos
 
-## Estructura de carpetas del backend
+1. El **SimulationEngine** avanza el tick y muta el dominio.
+2. El dominio emite eventos al **EventBus** (`node:updated`, `state:update`, `rule:triggered`, etc.).
+3. `Socket.IO` reenvía cada evento al navegador.
+4. `TimeSeriesSink` acumula filas y las escribe en MariaDB.
+5. `InferenceService` consume `state:update`, mantiene una ventana por nodo y pide la predicción al worker Python.
+6. `InferenceController` consume `inference:completed` y aplica la política de control IA.
+7. El frontend consume REST y WebSocket; el replay es 100 % del lado del cliente.
 
-```
+### 1.2 Contrato de puertos
+
+El backend escucha en `PORT`. El proxy de Vite y `CORS_ORIGIN` deben coincidir con ese puerto y con el origen del frontend.
+
+| Pieza | Dónde se configura | Default | Ejemplo local con 3001 |
+|---|---|---|---|
+| Backend | `PORT` en `backend/.env` | `3000` | `$env:PORT='3001'; pnpm.cmd dev` |
+| Proxy Vite | `frontend/vite.config.js` | `http://localhost:3000` | `http://localhost:3001` |
+| CORS | `CORS_ORIGIN` en `backend/.env` | `http://localhost:5173` | `http://localhost:5173` |
+| Frontend | Vite | `5173` | `5173` |
+
+Regla: si cambias `PORT`, cambia también el target de `/api` y `/socket.io` en `vite.config.js`. Si no, Vite devuelve `ECONNREFUSED`. Si cambias el puerto del frontend, actualiza `CORS_ORIGIN`.
+
+## 2. Estructura del repositorio
+
+```text
 backend/
-├── src/
-│   ├── domain/   # Lógica pura sin I/O
-│   │   ├── types.ts / ids.ts      # DTOs, tipos de dominio y createId
-│   │   ├── node.ts                # SimNode (nodo + cola de prioridad + pila LIFO)
-│   │   ├── tasks.ts               # PriorityTaskQueue (cola por prioridad, FIFO en empate)
-│   │   ├── stack.ts               # EventStack (pila LIFO)
-│   │   ├── thermal.ts             # Modelo térmico (thermalStep) + COMPUTE_DEMAND_HEAT
-│   │   ├── dispatcher.ts          # Pick del nodo libre más frío (estrangulamiento térmico)
-│   │   ├── system.ts              # SystemSimulation (nodos, pool global, snapshot, reset)
-│   │   ├── rules.ts               # Evaluación de reglas (evaluateRule)
-│   │   ├── rules-store.ts         # RuleStore (CRUD + enabledList)
-│   │   └── actions.ts             # runAction (efecto de cada acción)
-│   ├── engine/
-│   │   ├── eventBus.ts            # EventBus genérico tipado
-│   │   ├── events.ts              # SimEventMap (eventos tipados)
-│   │   └── simulationEngine.ts    # Tick, tareas/dispatch, reglas, cooldowns
-│   ├── api/
-│   │   ├── context.ts             # AppContext (contexto compartido)
-│   │   ├── validation.ts          # Schemas zod + parseBody/parseQuery*
-│   │   └── *.routes.ts            # nodes / system / rules / logs / simulate / tasks
-│   ├── config.ts                  # loadConfig (env → Config zod)
-│   ├── config/database.ts         # loadDatabaseSettings (env DB_* → pool)
-│   ├── infra/
-│   │   ├── database.ts            # Database: conexión única estilo PDO (prepare/insert/transaction)
-│   │   ├── httpServer.ts          # Express: cors, routers, health, 404/500
-│   │   ├── sockets.ts             # attachSockets (puente bus ↔ io)
-│   │   ├── logger.ts              # LogStore (buffer en memoria)
-│   │   ├── persistence.ts         # PersistenceRepository + MemoryPersistence
-│   │   ├── rulesLoader.ts         # Carga data/default-rules.json
-│   │   └── timeseriesSink.ts      # EventBus → filas telemetry/events (insertMany)
-│   ├── config/database.ts         # loadDatabaseSettings (env DB_* → pool)
-│   └── index.ts                   # Bootstrap (config, ctx, io, listen)
-├── data/default-rules.json        # Reglas iniciales (hot-editable por API)
-└── test/                          # Tests vitest (thermal, tasks, dispatch, rules)
+  src/
+    api/          routers Express + validación zod + AppContext
+    config/       configuración de base de datos
+    domain/       lógica pura sin I/O
+    engine/       EventBus, SimulationEngine, EventEngine
+    infra/        HTTP, Socket.IO, logs, persistencia, BD, IA
+  data/           default-rules.json (semilla de reglas)
+  test/           146 tests vitest
+frontend/
+  src/
+    components/   HUD, escena, dock, drawer, centro de control, eventos
+    hooks/        conexión REST/WS y estado del cliente
+    lib/          recomendación
+    three/        escena Three.js, layout, tema y etiquetas
+  src/**/*.test.js  11 tests node:test
+ml/
+  export.py       lectura de telemetría
+  features.py     features y target
+  model.py        split y GradientBoostingRegressor
+  metrics.py      MAE/RMSE y baseline
+  anomaly.py      umbral de residuos
+  ollama.py       explicación opcional
+  train.py        orquestador
+  predict.py      inferencia puntual
+  worker.py       worker JSON stdin/stdout
+  tests/          18 tests pytest
+docker/
+  mysql/init/01-schema.sql   DDL idempotente
+docs/
+  guia-tecnica.md
+  guia-usuario.md
+  guia-junior.md
+  pruebas-calibracion.md
 ```
 
-Responsabilidades por capa:
+Capas del backend:
 
-| Capa | Responsabilidad | Depende de |
+| Capa | Responsabilidad | No debe hacer |
 |---|---|---|
-| `domain/` | Reglas de negocio puras: modelo térmico, colas, nodos, reglas, acciones | Solo TS |
-| `engine/` | Motor de simulación + bus de eventos tipado | `domain/` y `infra/logger` |
-| `api/` | Routers Express, validación zod, contexto compartido | `domain/`, `engine/`, `infra/` |
-| `infra/` | Config, persistencia, logs, Socket.IO, HTTP | `domain/`, `engine/` |
+| `domain/` | Modelo térmico, nodos, tareas, reglas, acciones, eventos, política IA | I/O, HTTP, BD |
+| `engine/` | Orquestar el tick, emitir eventos, evaluar reglas y eventos | Conocer Express o MariaDB |
+| `api/` | Validar entrada, traducir a dominio, responder HTTP | Implementar física o reglas |
+| `infra/` | HTTP, Socket.IO, logs, persistencia, BD, worker Python | Decidir reglas de negocio |
 
-## Modelo de dominio
+## 3. Modelo de dominio
 
-### Nodo (`SimNode`, `domain/node.ts`)
+### 3.1 Nodo (`domain/node.ts`)
 
-Un nodo representa un servidor. El sistema crea **`node-general`** (tipo `general`) más **`node-1..N`** (tipo `worker`, según `INITIAL_NODES`). Campos de su DTO (`NodeDto` en `types.ts`):
+Cada nodo es el **Servidor General** (`node-general`, agregado) o un **worker** (`node-1..N`).
 
-| Campo | Tipo | Descripción |
+| Campo | Tipo | Significado |
 |---|---|---|
-| `id`, `name`, `type` | string, `'general'\|'worker'` | Identidad |
-| `status` | `'active'\|'inactive'\|'error'` | Equivale a `STATUS_CODE` 0/1/2 |
-| `currentTemp` | number | Temperatura actual (°C, 2 decimales) |
-| `targetTemp`, `ambientTemp` | number | Objetivo del usuario y ambiente (°C) |
-| `aiTargetOffset` | number | Corrección temporal del objetivo aplicada por la IA (±1.5 °C); el objetivo efectivo es `targetTemp + aiTargetOffset` |
-| `workload` | number | Carga de trabajo 0–1 (3 decimales) |
-| `taskHeat` | number | Calor neto de la tarea en curso (`−demand×0.07` para `cooldown`, `+demand×0.07` para el resto; 0 si inactivo) |
-| `fanActive`, `fanUntilMs` | boolean, number | Ventilador y hasta cuándo |
-| `stats` | `{failures, consecutiveFailures, maxConsecutiveFailures, ok}` | Lecturas fallidas simuladas |
-| `queue` | `QueueDto` | Estado de la cola de prioridad |
-| `stack` | `StackDto` | Estado de la pila LIFO |
-| `updatedAt` | number | Último tick |
+| `id` | string | `node-general` o `node-<id>` |
+| `name` | string | Nombre visible |
+| `type` | `general` / `worker` | El general no se controla ni admite perturbaciones |
+| `status` | `active` / `inactive` / `error` | Estado simulado |
+| `currentTemp` | number | Temperatura actual (°C) |
+| `targetTemp` | number | Objetivo base del usuario |
+| `aiTargetOffset` | number | Offset temporal aplicado por la IA (máx. ±1.5 °C) |
+| `ambientTemp` | number | Temperatura ambiente |
+| `workload` | 0–1 | Carga de trabajo |
+| `taskHeat` | number | Calor neto de la tarea actual; negativo para `cooldown` |
+| `fanActive` | boolean | Ventilador |
+| `fanUntilMs` | number | Expiración del ventilador (`0` = manual) |
+| `stats` | objeto | Fallos, fallos consecutivos, máximo, `ok` |
+| `queue` | `QueueDto` | Cola local de prioridad |
+| `stack` | `StackDto` | Pila LIFO de eventos |
+| `updatedAt` | number | Última actualización |
 
-El "estado en error" es un **contador simulado** de fallos consecutivos: cuando `consecutiveFailures >= maxConsecutiveFailures` el nodo pasa a `error` (métodos `markFailure`/`recover`). No hay hardware.
+Modelo térmico (`domain/thermal.ts`):
 
-### Tarea y cola de prioridad (`tasks.ts`)
+| Parámetro | Valor | Efecto |
+|---|---:|---|
+| `timeConstantMs` | 20 000 | Inercia hacia el objetivo |
+| `loadHeatGain` | 0.35 | Calor por unidad de `workload` |
+| `dissipationRate` | 0.002 | Disipación hacia el ambiente |
+| `fanDissipationMultiplier` | 3 | Multiplicador del ventilador |
+| `COMPUTE_DEMAND_HEAT` | 0.07 | Calor por unidad de `computeDemand` |
+| `COOLDOWN_TASK_COOLING` | 0.07 | Enfriamiento por unidad en tareas `cooldown` |
+| `INACTIVE_COOLING_TIME_MS` | 60 000 | Constante de enfriamiento de un nodo inactivo |
 
-`PriorityTaskQueue` procesa primero la tarea de **mayor prioridad** (`priority`, 1 = menor … 5 = mayor) y, en empate, la **más antigua** (FIFO), con capacidad limitada (`NODE_QUEUE_CAPACITY` por nodo, `PENDING_POOL_CAPACITY` para el pool global). API: `enqueue`, `peek` (solo lectura), `poll` (extrae), `startProcessing`, `complete`, `clear`, `toArray` (orden de servicio).
+Fórmula activa:
 
-Tipos de tarea (`TaskType`): `cooldown`, `maintenance`, `reboot`, `calibration`, `custom`. Estados: `pending → processing → completed`. Campos: `id`, `type`, `priority`, `computeDemand` (1–5), `durationSecs` (1–10, defecto `5`), `status`, `enqueuedAt`, `startedAt?`, `completedAt?`, `description?`, `payload?`. Las tareas `cooldown` **restan** calor mientras se procesan (`−computeDemand × COOLDOWN_TASK_COOLING`); el resto suma calor.
-
-### Dispatcher (`dispatcher.ts`)
-
-`dispatchHighestPriority(workers, pool)` toma `pool.peek()` (la mayor prioridad) y lo asigna al candidato elegido por `pickCoolestWorker`: un worker **activo**, **sin tarea en curso** y con **cola local vacía**, de **menor `currentTemp`**. Devuelve `{node, task}` (la tarea ya se extrajo del pool); el motor llama a `node.startExternalTask(task)`. Así el "estrangulamiento térmico" reparte carga: el nodo más frío recibe trabajo y su temperatura sube por la demanda de cómputo.
-
-### Evento y pila LIFO (`stack.ts`)
-
-`EventStack` guarda los últimos eventos del nodo en orden **LIFO** (`unshift`, recorta por `STACK_CAPACITY`). Cada entrada: `{ts, kind, label, detail?, meta?}` con `kind ∈ {event, task, rule, alert, change}`.
-
-### Regla (`rules-store.ts`, `rules.ts`)
-
-Forma de `Rule`:
-
-```ts
-interface Rule {
-  id: string; name: string;
-  enabled: boolean; cooldownMs: number;
-  subject: 'any' | 'all' | 'system' | 'node';
-  nodeId?: string;
-  metric:
-    | 'temperature' | 'temperatureDelta'
-    | 'predictedTemperature' | 'predictedDelta'
-    | 'workload' | 'status' | 'queueLength' | 'stackLength';
-  op: '>' | '>=' | '<' | '<=' | '==' | '!=';
-  value: number;
-  action: ActionType;
-  actionParams?: Record<string, unknown>;
-  lastTriggeredAt?: number; triggerCount: number;
-}
+```text
+temp += ((target - temp) / 20 + 0.35 * workload + taskHeat
+         - 0.002 * (temp - ambient) * fanMultiplier) * dt
 ```
 
-- `matchTargetNodes`: `system` → solo `node-general`; `node` → un nodo concreto (requiere `nodeId`); `any`/`all` → todos los workers.
-- `all` exige que TODOS los candidatos cumplan; `any` basta con uno.
-- `metricValue`: `status` se compara numérico (`active=0`, `inactive=1`, `error=2`); `temperatureDelta` = `currentTemp - targetTemp`; `predictedTemperature` es la última predicción del nodo y `predictedDelta` = `predictedTemp - targetTemp` (objetivo base, sin `aiTargetOffset`).
-- Las métricas predictivas solo existen si hay una `inference:completed` de ese nodo con antigüedad menor a `PREDICTION_TTL_MS` (60 s). Sin predicción, `NaN` o una predicción más vieja, la regla no dispara (la comparación se descarta antes de evaluar).
+Con `workload=0` el equilibrio queda cerca de 29.62 °C para target 30 °C. Con `workload=0.3`, cerca de 31.63 °C. El objetivo no es el punto de equilibrio exacto: la carga y la disipación lo desplazan. Es una propiedad del modelo, no un fallo.
 
-### Acciones (`actions.ts`)
+Un nodo inactivo disipa hacia el ambiente con constante de 60 s. Las tareas `cooldown` restan calor. El ventilador expira solo si `fanUntilMs > 0`.
 
-| Acción | Parámetros (`actionParams`) | Efecto |
-|---|---|---|
-| `fan_on` | `minutes` (def. 2) | Activa el ventilador con vencimiento |
-| `fan_off` | — | Apaga el ventilador |
-| `shutdown` | — | `status = 'inactive'` |
-| `startup` | — | `status = 'active'` |
-| `enqueue_task` | `taskType` (def. `cooldown`), `priority?` (1–5), `computeDemand?` (1–5), `durationSecs?` (1–10) o `durationMs` (retrocompatible), `description` | Encola tarea: con `subject=any\|all` entra **al pool global** (emite `task:pending`); con `subject=system\|node` a la cola del nodo (emite `task:queued`) |
-| `send_alert` | `message` | Log crítico + evento WebSocket `alert` |
-| `reduce_load` | `by` (def. 0.3) | Baja `workload` (mínimo 0) |
-| `set_workload` | `value` (0–1) | Fija `workload` |
-| `set_target_temperature` | `target` | Ajusta `targetTemp` y resetea `aiTargetOffset` |
+### 3.2 Tarea, cola y pool
 
-## Motor de simulación (`engine/simulationEngine.ts`)
+Tipos: `cooldown`, `maintenance`, `reboot`, `calibration`, `custom`.
 
-- `start()` usa `setInterval(tick, TICK_MS)`. El tick calcula `dt = min(Date.now() - lastTickAt, MAX_DT_MS)` con `MAX_DT_MS = 5000` — **tiempo real**, no un delta fijo (evita "saltos" si el proceso se bloquea).
-- Orden del tick (`step(dtMs)`):
-  1. `system.tickThermalAll(dtMs)` — térmica de cada nodo + expiración de ventiladores.
-  2. `processTasks()` — completa tareas vencidas (`now - startedAt >= durationSecs*1000`); después despacha el **pool global**: mientras queden tareas y workers elegibles, `dispatchHighestPriority` las asigna al nodo activo libre más frío (`startExternalTask`); finalmente, los nodos con cola local libre arrancan su siguiente tarea (`startNextTask`).
-  3. `evaluateRules()` — recorre `rules.enabledList()` (las reglas se leen **cada tick** → edits en caliente vía API), respeta `cooldownMs`, ejecuta `runAction` por nodo y emite `rule:triggered` (+ `alert` si la acción es `send_alert`). La acción `enqueue_task` con `subject=any|all` inyecta **una** tarea al pool global en vez de una por nodo. El motor cachea la última `inference:completed` por nodo (TTL 60 s) y la pasa a `evaluateRule` para las métricas predictivas; el payload incluye `action`, `applied`, `reason?`, `taskId?` y `predictedTemp?` para auditar el resultado de la actuación. La regla por defecto «Ventilador por predicción alta» usa `predictedDelta > 1.5` con cooldown de 30 s.
-  4. Emite `node:updated` por nodo y `state:update` (snapshot).
-- `pause()`/`resume()` detienen/reanudan el intervalo. `stepOnce()` permite avanzar un tick manualmente **solo en pausa** (si está corriendo lanza un error que la API traduce a HTTP 409).
-- `reset()` restaura nodos, colas, pilas y contadores de reglas. El motor arranca con `engine.start()` al levantar el servidor.
+| Campo | Rango | Default | Efecto |
+|---|---:|---:|---|
+| `priority` | 1–5 | 3 | 5 es la más urgente; empate FIFO |
+| `computeDemand` | 1–5 | 1 | Calor extra `demanda × 0.07` |
+| `durationSecs` | 1–10 | 5 | Duración canónica |
+| `description` | 120 chars | — | Texto libre |
+| `payload` | objeto | — | Datos de la tarea |
 
-Modelo térmico (`thermal.ts`):
+Estados: `pending`, `processing`, `completed`.
 
+Hay dos destinos:
+
+1. **Cola local del nodo** (`node.enqueueTask`): capacidad `NODE_QUEUE_CAPACITY` (50).
+2. **Pool global** (`system.submitPending`): capacidad `PENDING_POOL_CAPACITY` (100).
+
+Cada tick, `dispatchHighestPriority` asigna la tarea de mayor prioridad del pool al **worker activo libre más frío** (cola local vacía y sin tarea en curso). Después, cada nodo arranca su propia cola local. Cada nodo procesa una tarea a la vez.
+
+El dispatcher no asigna al general. El general puede procesar tareas encoladas por API o por reglas con `subject=system`, pero no recibe del pool.
+
+### 3.3 Pila LIFO (`domain/stack.ts`)
+
+Cada nodo tiene una pila de eventos con capacidad `STACK_CAPACITY` (20). Guarda entradas `event`, `task`, `rule`, `alert` y `change`. La última entrada es la más reciente. Se muestra en el drawer y en la etiqueta 3D.
+
+### 3.4 Reglas (`domain/rules.ts`)
+
+Una regla tiene:
+
+| Campo | Valores |
+|---|---|
+| `subject` | `any`, `all`, `system`, `node` |
+| `metric` | `temperature`, `temperatureDelta`, `predictedTemperature`, `predictedDelta`, `workload`, `status`, `queueLength`, `stackLength` |
+| `op` | `>`, `>=`, `<`, `<=`, `==`, `!=` |
+| `action` | `fan_on`, `fan_off`, `shutdown`, `startup`, `enqueue_task`, `send_alert`, `reduce_load`, `set_workload`, `set_target_temperature` |
+| `cooldownMs` | 0–3 600 000, default 30 000 |
+| `actionParams` | objeto libre |
+
+Semántica:
+
+- `any`: dispara si **algún** worker cumple. La acción se aplica a cada worker que cumple.
+- `all`: dispara solo si **todos** los workers cumplen. La acción se aplica a los que cumplen.
+- `system`: actúa sobre el nodo general.
+- `node`: actúa sobre `nodeId`.
+
+`predictedTemperature` y `predictedDelta` usan la última inferencia del nodo. La predicción vale **60 s** (`PREDICTION_TTL_MS`). Sin predicción fresca o con `NaN`, la regla no dispara. `predictedDelta = predicha − targetTemp` base, sin `aiTargetOffset`.
+
+Si `action=enqueue_task` y `subject=any|all`, se inyecta **una** tarea al pool global, no una por nodo. `runAction` devuelve `{applied, reason?, taskId?}`; `rule:triggered` incluye ese resultado.
+
+Las reglas se leen cada tick con `rules.enabledList()`: se pueden crear, editar, activar o eliminar en caliente por API. La semilla `RULES_FILE` es de solo lectura; las mutaciones viven en memoria y se pierden al reiniciar.
+
+### 3.5 Eventos de simulación (`domain/events.ts`)
+
+Catálogo de primera clase. Cada evento tiene `id`, nombre, categoría, probabilidad, cooldown, `enabled` y parámetros.
+
+| Id | Categoría | Prob. default | Cooldown | Efecto |
+|---|---|---:|---:|---|
+| `task_arrival` | tráfico | 0.08 | 3 s | Encola 1–3 tareas en el pool o en la cola de un nodo |
+| `thermal_spike` | perturbación | 0.02 | 15 s | Suma `magnitude` (6 °C) a un worker |
+| `node_failure` | perturbación | 0.01 | 60 s | Fuerza `error` sin cancelar la tarea actual |
+| `node_recovery` | perturbación | 0.03 | 30 s | Devuelve a `active` y limpia fallos |
+| `fan_failure` | perturbación | 0.01 | 30 s | Apaga el ventilador de un worker |
+| `workload_surge` | perturbación | 0.02 | 30 s | Suma `magnitude` (0.35) de carga, tope 1 |
+| `synthetic_alert` | perturbación | 0.01 | 30 s | Emite una alerta sin cambiar la temperatura |
+
+Reglas de aplicación:
+
+- El disparo manual (`POST /api/events/:id/trigger`) salta probabilidad y cooldown.
+- El disparo automático solo elige workers elegibles; nunca el general.
+- Las perturbaciones que mutan estado (`thermal_spike`, `node_failure`, `node_recovery`, `fan_failure`, `workload_surge`) rechazan el nodo general con 400 si se piden por API.
+- `task_arrival` con `nodeId` encola en la cola local; sin `nodeId`, en el pool.
+- Cada disparo emite `event:triggered`, se registra con tipo `event` y se persiste como `kind=sim_event`.
+- `EVENTS_ENABLED=false` por defecto: el generador arranca apagado. El catálogo no se persiste; reiniciar restablece los valores.
+
+### 3.6 Política de control IA (`domain/aiControl.ts`)
+
+Acciones: `fan_on`, `fan_off`, `set_workload`, `target_offset`, `enqueue_cooldown`, `enqueue_load`, `shutdown`, `startup`.
+
+Guardarraíles:
+
+- Solo workers. El general es un agregado.
+- Nodo en `error`: no se toca.
+- Predicción inválida: no se actúa.
+- Cambio manual de objetivo, ventilador o carga: pausa `AI_CONTROL_MANUAL_PAUSE_MS` (30 s).
+- Confirmaciones: `AI_CONTROL_CONFIRMATIONS` (2) predicciones consecutivas.
+- Cooldown por nodo: `AI_CONTROL_COOLDOWN_MS` (5 s).
+- Límite global: `AI_CONTROL_MAX_ACTIONS_PER_MIN` (20).
+- Carga: paso 0.1, mínimo 0.05, máximo 0.8.
+- Offset de objetivo: máximo ±1.5 °C, paso 0.5 °C.
+- Tareas: mínimo 15 s entre tareas y cola local por debajo del 50 %.
+- Apagado de emergencia: desactivado por defecto (`AI_CONTROL_ALLOW_SHUTDOWN=false`).
+- Al desactivar el control se liberan offset, ventilador propio y apagados de la IA.
+
+## 4. Motor de simulación
+
+### 4.1 Tick
+
+`SimulationEngine` usa `Date.now()` y un delta real acotado a `MAX_DT_MS = 5000`. No usa un `dt` fijo por `TICK_MS`.
+
+Orden exacto de `step(dtMs)`:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ENG as SimulationEngine
+    participant SYS as SystemSimulation
+    participant EVT as EventEngine
+    participant LOG as LogStore
+    participant BUS as EventBus
+
+    ENG->>SYS: tickThermalAll(dtMs)
+    ENG->>EVT: step(dtMs)
+    EVT->>SYS: applyEvent si toca
+    ENG->>LOG: telemetría cada LOG_TELEMETRY_EVERY
+    ENG->>SYS: processTasks()
+    SYS->>SYS: completar tareas y despachar pool
+    ENG->>SYS: evaluateRules()
+    ENG->>SYS: actualizar updatedAt de cada nodo
+    ENG->>BUS: node:updated por nodo
+    ENG->>BUS: state:update
 ```
-dT/dt = ((target + aiTargetOffset) − T) / τ + loadHeatGain·workload + taskHeat − dissipationRate·(T − ambient)·(fan ? 3 : 1)
-```
 
-Con constantes por defecto: `timeConstantMs = 20000`, `loadHeatGain = 0.35`, `dissipationRate = 0.002`, `fanDissipationMultiplier = 3`, `COMPUTE_DEMAND_HEAT = 0.07`, `COOLDOWN_TASK_COOLING = 0.07`. `taskHeat` es negativo para tareas `cooldown` y positivo para el resto. Un nodo inactivo **no congela** su temperatura: disipa hacia el ambiente con `INACTIVE_COOLING_TIME_MS = 60000` (`dT/dt = (ambient − T) / 60 s`), lo que hace útil el apagado de emergencia.
+Por qué importa el orden:
 
-## API REST
+- Los eventos se aplican **después** del térmico y **antes** de las tareas. Un `task_arrival` puede despacharse en el mismo tick.
+- Las reglas se evalúan **después** de procesar tareas, así ven el estado más reciente.
+- `state:update` se emite al final, una vez por tick, con el snapshot completo.
+- `node:updated` se emite por cada nodo antes del snapshot; `TimeSeriesSink` lo usa para telemetría.
 
-Prefijo `/api`. Errores de validación → `400 {error, issues}`; recurso inexistente → `404`; cola llena → `409`.
+`stepOnce(dtMs)` existe para tests: ejecuta un tick sin depender del reloj.
 
-### `/health`
+### 4.2 Reglas en caliente
+
+`evaluateRules()` recorre `rules.enabledList()` cada tick. No hay caché de reglas. El `RuleStore` es la única fuente y la API muta el mismo objeto en memoria. Esto permite editar reglas sin reiniciar, pero también implica que un reinicio restablece la semilla.
+
+### 4.3 Generador de eventos
+
+`EventEngine.step(dtMs)` acumula `dtMs` y evalúa cuando alcanza `EVENTS_INTERVAL_MS`. Si el generador está apagado, no acumula. Por cada evento:
+
+1. ¿Está `enabled`?
+2. ¿Pasó su `cooldownMs` desde `lastTriggeredAt`?
+3. ¿`rng() < probability`?
+
+Si las tres se cumplen, dispara con `source=auto`. El RNG y el reloj son inyectables para tests.
+
+## 5. API REST
+
+Prefijo `/api`. Errores de validación → `400 {error, issues}`; recurso inexistente → `404`; cola o pool lleno → `409`; inferencia deshabilitada → `503`; fallo del worker → `502`.
+
+### 5.1 `/health`
 
 | Método | Ruta | Respuesta |
 |---|---|---|
 | GET | `/health` | `{status:'ok', running, tickMs, uptimeMs}` |
 
-### `/api/nodes`
+### 5.2 `/api/nodes`
 
 | Método | Ruta | Body | Respuesta |
 |---|---|---|---|
@@ -199,21 +348,21 @@ Prefijo `/api`. Errores de validación → `400 {error, issues}`; recurso inexis
 | DELETE | `/:id/queue` | — | `{removed: n}` |
 | GET | `/:id/stack` | — | `{stack: StackDto}` |
 
-La cola en `QueueDto`: `{list, size, capacity, remaining, processing}`.
+`QueueDto`: `{list, size, capacity, remaining, processing}`.
 
-### `/api/tasks`
+### 5.3 `/api/tasks`
 
-Pool global de tareas pendientes (cola de prioridad).
+Pool global de tareas pendientes.
 
 | Método | Ruta | Body | Respuesta |
 |---|---|---|---|
 | GET | `/` | — | `{pending: PendingQueueDto}` |
-| POST | `/` | `{type?='custom', priority?=3, computeDemand?=1, durationSecs?=5, description?, payload?}` | 201 `{task}` o 409 (pool lleno) |
+| POST | `/` | `{type?='custom', priority?=3, computeDemand?=1, durationSecs?=5, description?, payload?}` | 201 `{task}` o 409 |
 | DELETE | `/` | — | `{removed: n}` |
 
 `PendingQueueDto`: `{list, size, capacity, remaining}`.
 
-### `/api/system`
+### 5.4 `/api/system`
 
 | Método | Ruta | Body | Respuesta |
 |---|---|---|---|
@@ -222,29 +371,16 @@ Pool global de tareas pendientes (cola de prioridad).
 
 `SystemSnapshotDto`: `{ts, running, targetTemp, ambientTemp, general, workers[], summary{totalWorkers, activeWorkers, inactiveWorkers, errorWorkers, averageTemp}, pendingQueue{list, size, capacity, remaining}}`.
 
-### `/api/rules`
+### 5.5 `/api/rules`
 
 | Método | Ruta | Body | Respuesta |
 |---|---|---|---|
 | GET | `/` | — | `{rules: Rule[]}` |
-| POST | `/` | `RuleInput` (ver esquema abajo) | 201 `{rule}` |
+| POST | `/` | `RuleInput` | 201 `{rule}` |
 | PATCH | `/:id` | `Partial<RuleInput>` | `{rule}` o 404 |
 | DELETE | `/:id` | — | 204 o 404 |
 
-Esquema `ruleSchema` (validación zod en `api/validation.ts`):
-
-| Campo | Tipo | Default |
-|---|---|---|
-| `name` | string (1–80) | requerido |
-| `enabled` | boolean | `true` |
-| `cooldownMs` | int 0–3_600_000 | `30000` |
-| `subject` | enum | `'any'` |
-| `nodeId` | string | obligatorio si `subject=node` |
-| `metric` | enum (8) | requerido |
-| `op` | enum (6) | requerido |
-| `value` | number | requerido |
-| `action` | enum (9) | requerido |
-| `actionParams` | record | `{}` |
+`RuleInput` se valida con `ruleSchema` en `api/validation.ts`. `nodeId` es obligatorio si `subject=node`.
 
 Ejemplo:
 
@@ -253,14 +389,14 @@ curl -X POST http://localhost:3000/api/rules -H "Content-Type: application/json"
   -d '{"name":"Ventilador","metric":"temperature","op":">","value":55,"action":"fan_on","actionParams":{"minutes":2}}'
 ```
 
-### `/api/logs`
+### 5.6 `/api/logs`
 
 | Método | Ruta | Query | Respuesta |
 |---|---|---|---|
-| GET | `/` | `level=info,warning,critical&type=rule\|node\|task\|alert&nodeId=&since=<ms>&limit=` | `{logs, size, returned}` |
+| GET | `/` | `level=info,warning,critical&type=system\|api\|rule\|task\|node\|ai\|alert\|event&nodeId=&since=<ms>&limit=` | `{logs, size, returned}` |
 | DELETE | `/` | — | 204 |
 
-### `/api/sim`
+### 5.7 `/api/sim`
 
 | Método | Ruta | Respuesta |
 |---|---|---|
@@ -270,356 +406,605 @@ curl -X POST http://localhost:3000/api/rules -H "Content-Type: application/json"
 | POST | `/tick` | `{ok:true, tickMs}` o 409 si está corriendo |
 | POST | `/reset` | `{ok:true}` |
 
-### `/api/inference`
-
-| Método | Ruta | Respuesta |
-|---|---|---|
-| POST | `/predict` | `{ok:true, nodeId, predictedTemp, actualTemp, horizonMs, modelVersion, latencyMs, featuresHash, at}`; con `{nodes:[...]}` devuelve `{count, results}` con el estado por nodo; 404 si el nodo no existe, 409 si la ventana es insuficiente, 502 si la inferencia falla, 503 si la inferencia está deshabilitada |
-| GET | `/version` | `{version, meta}` del modelo cargado (la `version` es `sha256` del `model.joblib`) |
-
-### `/api/ai`
+### 5.8 `/api/inference`
 
 | Método | Ruta | Body | Respuesta |
 |---|---|---|---|
-| GET | `/control` | — | `{available, enabled, policy, stats, nodes, recent}`; `available:false` si no hay inferencia |
-| PATCH | `/control` | `{enabled?, policy?}` (política con umbrales y flags `allowFan/allowLoad/allowTarget/allowTasks/allowShutdown`) | Estado actualizado; 503 si el control no está disponible |
+| POST | `/predict` | `{nodeId}` o `{nodes:[...]}`, `horizonMs?` | Ver abajo |
+| GET | `/version` | — | `{version, meta}` |
 
-La política corre en `domain/aiControl.ts` (pura) y el controlador en `infra/ai/inferenceController.ts`.
-Solo actúa sobre workers, exige confirmaciones y cooldown, y emite `ai:action`. Los cambios manuales
-de ventilador, carga u objetivo pausan la IA en ese nodo (`AI_CONTROL_MANUAL_PAUSE_MS`). El
-ajuste de objetivo usa `aiTargetOffset` y se restaura al volver a banda; el objetivo del usuario no
-se modifica. Al desactivar el control se liberan el offset, el ventilador propio y los apagados de
-emergencia aplicados por la IA, y se emite `node:updated` si cambió el estado del nodo.
+`POST /predict` con `nodeId` devuelve `{ok:true, nodeId, predictedTemp, actualTemp, horizonMs, modelVersion, latencyMs, featuresHash, at}`. Con `nodes` devuelve `{count, results}` con el estado por nodo.
 
-## Eventos Socket.IO
+Códigos: 404 si el nodo no existe, 409 si la ventana es insuficiente, 502 si la inferencia falla, 503 si `INFERENCE_ENABLED=false`.
 
-El servidor sobrescribe en `infra/sockets.ts`: cada evento del bus se reenvía como paquete `{type, ts, payload}` con nombre igual al evento. El cliente se conecta con `io()` (proxy de Vite) y puede pedir suscripción a un nodo con `node:subscribe` / `node:unsubscribe`.
+`horizonMs` solo se devuelve como metadata. El modelo predice el horizonte con el que fue entrenado (`ML_HORIZON_MS`, 15 s). Cambiar `horizonMs` en la petición no reentrena ni cambia el target.
+
+La `version` es `sha256(model.joblib)[:12]` con prefijo `sha256:` (o `model_version`/`version`/`git_sha` si existen en `model.json`).
+
+### 5.9 `/api/ai`
+
+| Método | Ruta | Body | Respuesta |
+|---|---|---|---|
+| GET | `/control` | — | `{available, enabled, policy, stats, nodes, recent}` |
+| PATCH | `/control` | `{enabled?, policy?}` | Estado actualizado; 503 si no hay inferencia |
+
+`available:false` si no hay inferencia. `policy` acepta los mismos campos que `AI_CONTROL_*` en camelCase (`hotDelta`, `coldDelta`, `confirmations`, `allowFan`, etc.).
+
+### 5.10 `/api/events`
+
+| Método | Ruta | Body | Respuesta |
+|---|---|---|---|
+| GET | `/` | — | `{generator:{enabled, intervalMs}, events: EventRuntimeState[], recent: EventTriggeredPayload[]}` |
+| PATCH | `/` | `{enabled?, intervalMs?}` | Estado completo |
+| PATCH | `/:id` | `{enabled?, probability?, cooldownMs?}` | `{event}` o 404 |
+| POST | `/:id/trigger` | `{nodeId?, params?}` | `{event: EventTriggeredPayload}` |
+
+`EventRuntimeState`: `{id, name, category, description, enabled, probability, cooldownMs, defaultParams, lastTriggeredAt?, triggerCount}`.
+
+`POST /:id/trigger` salta probabilidad y cooldown. Si se pasa `nodeId`, debe existir. Las perturbaciones que mutan estado rechazan el general con 400. `synthetic_alert` acepta `params.message` y `params.level`.
+
+Ejemplos:
+
+```bash
+curl http://localhost:3000/api/events
+curl -X PATCH http://localhost:3000/api/events -H "Content-Type: application/json" \
+  -d '{"enabled":true,"intervalMs":5000}'
+curl -X POST http://localhost:3000/api/events/thermal_spike/trigger \
+  -H "Content-Type: application/json" -d '{"nodeId":"node-1","params":{"magnitude":4}}'
+```
+
+## 6. Eventos Socket.IO
+
+`infra/sockets.ts` reenvía cada evento del bus como paquete `{type, ts, payload}` con el nombre del evento. El cliente se conecta con `io()` a través del proxy de Vite.
 
 | Evento | Payload | Cuándo se emite |
 |---|---|---|
 | `state:update` | `SystemSnapshotDto` | Cada tick y tras pausa/resume/reset/PATCH |
-| `node:updated` | `{nodeId, node}` | Cada tick y tras cambios por API |
-| `rule:triggered` | `{rule, nodeId?, action, applied, reason?, taskId?, predictedTemp?, at}` | Cuando una regla se dispara. `nodeId` falta si la tarea fue al pool global; `applied=false` indica que la acción no tuvo efecto |
-| `task:queued` | `{nodeId, task}` | Al encolar por API o por regla en la cola de un nodo |
-| `task:completed` | `{nodeId, task}` | Cuando una tarea termina en el motor |
-| `task:pending` | `{task}` | Al entrar una tarea al pool global (API o regla `any`/`all`) |
-| `alert` | `{level:'critical', message, nodeId?, at}` | Acción `send_alert` |
-| `inference:completed` | `{nodeId, predictedTemp, actualTemp, horizonMs, modelVersion, latencyMs, featuresHash?, at}` | Tras cada inferencia automática o por API |
-| `ai:action` | `{nodeId, action, params?, reason, predictedTemp, actualTemp, baseTarget, targetTemp, offset, applied, at}` | Cuando la política de IA aplica una acción (persistida como `kind=ai_action`) |
+| `node:updated` | `{nodeId, node}` | Cada tick y tras cambios por API o IA |
+| `rule:triggered` | `{rule, nodeId?, action, applied, reason?, taskId?, predictedTemp?, at}` | Regla disparada; `nodeId` falta si la tarea fue al pool |
+| `task:queued` | `{nodeId, task}` | Tarea encolada por API, regla o evento |
+| `task:completed` | `{nodeId, task}` | Tarea terminada |
+| `task:pending` | `{task}` | Tarea al pool global |
+| `alert` | `{level:'warning'\|'critical', message, nodeId?, at}` | Acción `send_alert` o alerta sintética |
+| `inference:completed` | `{nodeId, predictedTemp, actualTemp, horizonMs, modelVersion, latencyMs, featuresHash?, at}` | Inferencia automática o por API |
+| `ai:action` | `{nodeId, action, params?, reason, predictedTemp, actualTemp, baseTarget, targetTemp, offset, applied, at}` | Política IA aplicada |
+| `event:triggered` | `{eventId, name, category, source, nodeId?, applied, message, taskIds?, params?, at}` | Evento de simulación disparado |
 
-Los eventos emitidos salen como `io.emit(...)` (broadcast a todos los conectados); las suscripciones por nodo usan salas `node:<id>` (los eventos actuales ignoran la sala y se emiten globalmente).
+Los eventos se emiten con `io.emit(...)` (broadcast global). Existen salas `node:<id>` y los mensajes `node:subscribe` / `node:unsubscribe`, pero los eventos actuales no filtran por sala.
 
-## Convenciones del proyecto
+El frontend agrupa `inference:completed` cada 250 ms para no re-renderizar por cada nodo. `state:update` alimenta el snapshot y el historial de replay.
 
-- **ESM**: `"type":"module"`, `moduleResolution: NodeNext`, TS strict. Los imports relativos llevan sufijo `.js` (`import { x } from './file.js'`).
-- **Validación zod** (`api/validation.ts`): toda entrada externa pasa por
-  `parseBody<S extends z.ZodTypeAny>(schema, body): {ok, value: z.output<S>} | {ok:false, issues}`.
-  **NO uses `z.ZodType<T>`**: hace que los campos con `.default()` dentro de schemas con `.refine()` infieran como `optional` y rompan la asignación a tipos como `RuleInput`/`TaskOptions` (bug real, ya corregido — prefiere siempre `z.ZodTypeAny` + `z.output<S>`).
-- **Sin comentarios en el código**.
-- **IDs**: `createId(prefix)` genera `${prefix}-${ts36}-${rand36}`. Prefixos: `node`, `task`, `rule`. El nodo del sistema se llama `node-general`; los workers `node-1..N`.
-- **Estados**: `STATUS_CODE` mapea `active=0`, `inactive=1`, `error=2`.
+## 7. Persistencia y base de datos
 
-## Variables de entorno
+### 7.1 Log
 
-Definidas en `backend/src/config.ts` (schema zod con default), ejemplo en `backend/.env.example`:
+`infra/logger.ts` mantiene un buffer de `LOG_CAPACITY` (200) y lo vuelca a `LOG_FILE` en JSONL. Al arrancar restaura el buffer ignorando líneas corruptas. `DELETE /api/logs` vacía buffer y archivo. `LOG_CONSOLE`, `LOG_LEVEL`, `LOG_HTTP` y `LOG_TELEMETRY_EVERY` controlan la salida.
+
+### 7.2 Reglas
+
+`infra/rulesLoader.ts` carga `RULES_FILE` al arrancar. Es una semilla de solo lectura: crear, editar o eliminar por API vive solo en memoria. Reiniciar restablece las 7 reglas originales.
+
+### 7.3 Capa `Database`
+
+`infra/database.ts` envuelve `mysql2/promise` con una API estilo PDO:
+
+| Método | Descripción |
+|---|---|
+| `query<T>(sql, params)` | Consulta cruda por el pool |
+| `execute<T>(sql, params)` | Statement preparado; acepta `?` o `:nombre` |
+| `insert(table, row)` | `INSERT` desde una fila-objeto |
+| `insertMany(table, rows)` | `INSERT` multi-fila |
+| `transaction<T>(work)` | `BEGIN`/`COMMIT`/`ROLLBACK` sobre una conexión |
+| `ensureSchema(file)` | Ejecuta el DDL una vez, idempotente |
+| `close()` | Cierra el pool |
+
+Los identificadores de tabla y columna se validan con `/^[A-Za-z_][A-Za-z0-9_]*$/`. El driver es inyectable para tests.
+
+`config/database.ts` traduce `DB_*` a la configuración del pool. `index.ts` abre la conexión y la inyecta en `TimeSeriesSink`.
+
+### 7.4 Esquema time-series
+
+DDL único: `docker/mysql/init/01-schema.sql`.
+
+```mermaid
+erDiagram
+    TELEMETRY {
+        bigint ts
+        varchar node_id
+        varchar node_type
+        double current_temp
+        double target_temp
+        double ambient_temp
+        double workload
+        double task_heat
+        tinyint status
+        tinyint fan_active
+        int queue_length
+        int stack_size
+    }
+
+    EVENTS {
+        bigint ts
+        varchar node_id
+        varchar kind
+        varchar type
+        varchar label
+        text message
+        json meta
+    }
+
+    INFERENCES {
+        bigint ts
+        varchar node_id
+        double predicted_temp
+        double actual_temp
+        int horizon_ms
+        varchar model_version
+        int latency_ms
+        varchar features_hash
+        json meta
+    }
+```
+
+No hay claves foráneas: las tablas son series temporales independientes. La vista `telemetry_minute` resume por minuto.
+
+### 7.5 `TimeSeriesSink`
+
+Se suscribe al bus y acumula filas:
+
+| Evento | Destino |
+|---|---|
+| `node:updated` | `telemetry` |
+| `rule:triggered` | `events` (`kind=rule`, `type=rule`) |
+| `task:queued` / `task:completed` / `task:pending` | `events` (`kind=task`, `type=task`) |
+| `alert` | `events` (`kind=alert`, `type=alert`) |
+| `inference:completed` | `inferences` + `events` (`kind=inference`) |
+| `ai:action` | `events` (`kind=ai_action`, `type=ai`) |
+| `event:triggered` | `events` (`kind=sim_event`, `type=event`) |
+
+Escribe por lotes cada `DB_FLUSH_MS` (1000 ms) o al llegar a `DB_MAX_BUFFER` (1000 filas). Si la BD falla, registra un log crítico con throttle de 5 s y la simulación continúa. El buffer pendiente se descarta; no hay reintento persistente.
+
+`telemetry.target_temp` guarda `targetTemp + aiTargetOffset`, es decir, el objetivo efectivo. El modelo aprende con ese valor.
+
+## 8. Pipeline analítico (`ml/`)
+
+Pipeline reproducible que lee `telemetry` y produce modelo, métricas y alertas.
+
+```mermaid
+flowchart LR
+    DB[("telemetry")] --> EXP["export.py"]
+    EXP --> FEAT["features.py"]
+    FEAT --> SPLIT["model.py<br/>split cronológico"]
+    SPLIT --> GBR["GradientBoostingRegressor"]
+    GBR --> MET["metrics.py"]
+    GBR --> ANOM["anomaly.py"]
+    ANOM --> OLL["ollama.py<br/>opcional"]
+    MET --> OUT["ml/out"]
+    ANOM --> OUT
+    OLL --> OUT
+    OUT --> WORKER["ml.worker"]
+    WORKER --> INF["InferenceService"]
+```
+
+| Paso | Módulo | Salida |
+|---|---|---|
+| Conexión pymysql con placeholders `:nombre` | `db.py` | — |
+| Lectura de `telemetry` | `export.py` | DataFrame + CSV |
+| Features | `features.py` | `X`, `y`, `meta` |
+| Target a `ML_HORIZON_MS` futura con `searchsorted` | `features.py` | serie objetivo |
+| Split cronológico 80/20 por nodo | `model.py` | posiciones train/test |
+| Entrenamiento | `model.py` | modelo + baseline `temp_lag_1` |
+| MAE/RMSE global y por nodo | `metrics.py` | `metrics.json` |
+| Umbral `media + N·σ` de residuos de test | `anomaly.py` | `alerts.jsonl` |
+| Explicación Ollama top-K | `ollama.py` | `meta.ollama` |
+| Orquestación y `--write-db` | `train.py` | `out/*` + `events` |
+
+### 8.1 Features (20)
+
+`temp_lag_1` … `temp_lag_8`, `temp_delta`, `temp_ma5`, `temp_std5`, `workload`, `task_heat`, `fan_active`, `status`, `queue_length`, `stack_size`, `target_temp`, `ambient_temp`, `rel_time_ms`.
+
+El target es la temperatura `horizon_ms` en el futuro, calculada por nodo con `searchsorted`. Se descartan las filas sin ventana completa o sin futuro.
+
+### 8.2 Modelo
+
+`GradientBoostingRegressor` con:
+
+| Hiperparámetro | Valor |
+|---|---:|
+| `n_estimators` | 120 |
+| `max_depth` | 4 |
+| `learning_rate` | 0.08 |
+| `subsample` | 0.9 |
+| `random_state` | `ML_SEED` (42) |
+
+Baseline: `temp_lag_1` (persistencia). El split es cronológico por nodo, 80/20. No se mezcla tiempo entre train y test.
+
+### 8.3 Métricas y límites
+
+En el artefacto de referencia de la sesión S10 (4 nodos, 3892 lecturas, horizonte 15 s):
+
+| Métrica | Valor |
+|---|---:|
+| MAE | 0.2306 °C |
+| RMSE | 0.4025 °C |
+| Baseline MAE | 0.00228 °C |
+| Mejora vs baseline | negativa (~-10028 %) |
+
+La baseline de persistencia es casi perfecta en régimen estacionario. El modelo solo aporta valor en transiciones (apagado, encendido, cooldown, picos). Con transiciones el MAE sube a ~1 °C. No interpretes la mejora negativa como un fallo del pipeline: es una propiedad del simulador suave.
+
+Umbral de anomalías: `media + N·σ` de los residuos absolutos **de test**. Con `ML_THRESHOLD_SIGMA=3` los datos nominales no generan alertas. Con `1.0` se ve el flujo completo.
+
+### 8.4 Artefactos y comandos
+
+`ml/out/` y `ml/data/` están gitignoreados.
+
+```powershell
+ml\.venv\Scripts\python -m ml.train
+ml\.venv\Scripts\python -m ml.train --write-db
+ml\.venv\Scripts\python -m ml.train --no-ollama
+ml\.venv\Scripts\python -m ml.train --since 2026-10-22T17:00:00Z
+ml\.venv\Scripts\python -m ml.predict --node node-1
+ml\.venv\Scripts\python -m pytest ml
+```
+
+Salidas: `model.joblib`, `model.json`, `metrics.json`, `alerts.jsonl`, `ml/data/telemetry.csv`.
+
+Tras cambiar la física térmica, reentrena con `--since` para no mezclar muestras del modelo anterior.
+
+## 9. Inferencia en vivo
+
+### 9.1 Worker Python
+
+`infra/ai/inferenceWorker.ts` lanza un proceso persistente:
+
+```text
+python -m ml.worker
+```
+
+Habla JSON por stdin/stdout, una petición por línea. Comandos: `ping`, `version`, `predict`. Cada petición lleva `id`; la respuesta lo repite. Timeout por petición: `INFERENCE_TIMEOUT_MS` (2000 ms), con margen extra para `version()` por el cold start. Si el proceso cae, la siguiente petición lo reinicia de forma perezosa. `rejectAll` rechaza las peticiones en vuelo al salir.
+
+`ml/worker.py` carga `model.joblib` y `model.json`, calcula la versión y reconstruye features con `build_inference_features` (sin target). Ancla `rel_time_ms` a un origen por nodo.
+
+### 9.2 Servicio
+
+`InferenceService` se suscribe a `state:update`:
+
+1. Guarda una muestra por nodo en una ventana deslizante (`INFERENCE_WINDOW=25`).
+2. Cuando hay `INFERENCE_MIN_SAMPLES=9`, lanza inferencia.
+3. Throttle por nodo: `INFERENCE_THROTTLE_MS=500`.
+4. Una sola inferencia en vuelo por nodo.
+5. Emite `inference:completed`.
+
+La auto-inferencia está siempre activa si `INFERENCE_ENABLED=true`. El frontend consume el evento y `GET /api/inference/version`.
+
+Limitación conocida: `InferenceService.request` no envía `taskHeat` al worker. `build_inference_features` rellena `task_heat` con 0 cuando falta. La inferencia en vivo no ve el calor de la tarea actual aunque el entrenamiento sí. Si corriges esto, reentrena y valida la paridad de features.
+
+### 9.3 Arranque y parada
+
+`index.ts` hace `inference.start()` (suscripción) → `inferenceWorker.start()` (spawn) → log de versión. En el shutdown: `engine.stop()` → `aiControl.stop()` → `inference.stop()` → `sink.close()` → `database.close()` → `persistence.save()`.
+
+## 10. Control IA
+
+`InferenceController` consume `inference:completed`, detecta cambios manuales y llama a `decideAiAction`.
+
+### 10.1 Decisión
+
+| Situación | Acción |
+|---|---|
+| General, error, predicción inválida o pausa manual | Ninguna |
+| Nodo inactivo apagado por IA, frío y con downtime | `startup` |
+| Caliente (`predicha > base + hotDelta`) | `shutdown` de emergencia, `fan_on`, `set_workload` abajo, `enqueue_cooldown`, `target_offset` abajo |
+| Frío (`predicha < base - coldDelta`) | `fan_off` si el ventilador es de la IA, `set_workload` arriba, `target_offset` arriba, `enqueue_load` |
+| En banda | `fan_off` de la IA y restauración del offset |
+
+El objetivo efectivo es `targetTemp + aiTargetOffset`. El objetivo del usuario no se modifica.
+
+### 10.2 Aplicación
+
+`apply()` reutiliza `runAction` para ventilador, carga y tareas. Para `target_offset` escribe `node.aiTargetOffset` y deja una entrada `change` en la pila. Cada acción aplicada emite `ai:action`, `node:updated` y un log tipo `ai`.
+
+`release()` al desactivar: offset a 0, ventilador propio apagado, nodos apagados por IA reactivados, contadores a cero. Si cambió algo, emite `node:updated`.
+
+### 10.3 Persistencia
+
+`ai:action` se guarda en `events` con `kind=ai_action` y `type=ai`. El `meta` incluye predicción, temperatura real, objetivo base, objetivo efectivo, offset y parámetros.
+
+## 11. Frontend
+
+React 19 (JSX sin TypeScript) + Vite. El proxy de Vite envía `/api` y `/socket.io` al backend.
+
+```mermaid
+flowchart TD
+    APP["App.jsx"] --> HUD["Hud"]
+    APP --> SCENE["Scene (lazy)"]
+    APP --> DOCK["NodeDock"]
+    APP --> DRAWER["NodeDrawer"]
+    APP --> CC["ControlCenter (dialog)"]
+    APP --> EVENTS["EventPanel"]
+    APP --> REPLAY["ReplayBar"]
+    APP --> TOASTS["ToastStack"]
+    SCENE --> FLOOR["Floor"]
+    SCENE --> TILE["NodeTile"]
+    SCENE --> LABEL["NodeLabel"]
+    DRAWER --> DETAIL["NodeDetailPanel"]
+    DETAIL --> TASKFORM["TaskForm"]
+    DETAIL --> SPARK["Sparkline"]
+    CC --> AI["AiControlPanel"]
+    CC --> MODEL["ModelPanel"]
+    CC --> RULES["RulesPanel"]
+    CC --> POOL["PoolPanel"]
+    CC --> EFF["EfficiencyPanel"]
+    CC --> ALERTS["AlertsPanel"]
+```
+
+### 11.1 Hooks
+
+| Hook | Responsabilidad |
+|---|---|
+| `useSimulation` | Socket singleton; `state:update` → snapshot; `alert` → alertas (máx. 20); API REST de simulación, nodos y pool |
+| `useRules` | `GET /api/rules`; refresh en `rule:triggered`; toggle y delete |
+| `useHistory` | Socket propio; acumula `MAX_SAMPLES=600` snapshots; índice de replay (−1 = vivo) |
+| `useInference` | `inference:completed` con batching de 250 ms; versión y metadatos del modelo |
+| `useAiControl` | `ai:action`; `GET/PATCH /api/ai/control`; estado y feed |
+| `useEvents` | `event:triggered`; `GET/PATCH/POST /api/events`; generador y catálogo |
+| `useTheme` | `data-theme` en `<html>`, `localStorage` (`waitt-theme`) y toggle |
+| `useReducedMotion` | Respeta `prefers-reduced-motion` |
+
+### 11.2 UI
+
+- **HUD flotante**: marca, estado de conexión, media, activos, errores, botón IA, objetivo global, tema, pausa/reanudar, alertas y acceso al centro de control.
+- **Escena 3D cenital**: cada nodo es un rack de servidor. La altura, el panel frontal, el LED y el halo codifican temperatura. Inactivo gris, error rojo con pulso, ventilador con disco cian.
+- **Dock de nodos**: lista navegable con flechas, Home y End.
+- **Drawer**: detalle del nodo, objetivo ±5°, ventilador, métricas, predicción, cola, pila, formulario de tarea y sparkline.
+- **Centro de control** (`<dialog>`): pestañas **IA** (predicciones + control), **Automatización** (reglas + pool), **Sistema** (eficiencia + reset) y **Alertas**.
+- **Panel de eventos**: botón flotante con icono `joker`; activa el generador, ajusta intervalo, probabilidad y cooldown, dispara eventos y muestra el feed reciente. En replay es solo lectura.
+- **ReplayBar**: línea de tiempo, reproducción automática (600 ms), paso a paso y vuelta a vivo.
+- **Toasts**: alertas recientes, máximo 3 visibles, 6 s.
+- **Tema**: claro/oscuro; el script pre-paint de `index.html` evita el destello.
+
+### 11.3 Escena 3D
+
+`three/layout.js` calcula la rejilla: workers ordenados por id en `ceil(√N)` columnas; una columna en retrato; el general va detrás. La cámara se calcula por ancho/profundidad. `three/theme.js` define la paleta y se pasa por props a `Scene`, `Floor` y `NodeTile`.
+
+`Scene` se carga con `React.lazy` y está aislada por `SceneErrorBoundary`. `main.jsx` no envuelve la app en `StrictMode`: el doble montaje desmonta el primer portal de drei `<Html>` y deja vacía la etiqueta de un nodo.
+
+### 11.4 Replay
+
+`useHistory` guarda hasta 600 snapshots de `state:update`. En replay, `App.jsx` usa `replaySnapshot` como fuente de verdad para la escena, el drawer y los paneles. La configuración queda deshabilitada; el panel de eventos y el drawer pasan a solo lectura. El replay es 100 % client-side.
+
+## 12. Variables de entorno
+
+Definidas en `backend/src/config.ts` (zod con defaults). Ejemplo en `backend/.env.example`.
+
+### 12.1 Generales
 
 | Variable | Default | Efecto |
 |---|---|---|
 | `PORT` | `3000` | Puerto HTTP + WebSocket |
-| `TICK_MS` | `1000` | Intervalo del tick (50–60000 ms) |
-| `INITIAL_NODES` | `3` | Workers iniciales (más el general) |
-| `INITIAL_TEMP` | `25` | Temperatura inicial de los nodos |
+| `TICK_MS` | `1000` | Intervalo del tick (50–60 000 ms) |
+| `INITIAL_NODES` | `3` | Workers iniciales (1–200) |
+| `INITIAL_TEMP` | `25` | Temperatura inicial |
 | `TARGET_TEMP` | `30` | Objetivo global inicial |
 | `AMBIENT_TEMP` | `20` | Ambiente global inicial |
-| `CORS_ORIGIN` | `http://localhost:5173` | Origen permitido (REST y WS) |
-| `NODE_QUEUE_CAPACITY` | `50` | Capacidad de la cola de prioridad por nodo |
-| `STACK_CAPACITY` | `20` | Capacidad de la pila LIFO |
-| `LOG_CAPACITY` | `200` | Tamaño del buffer de logs |
-| `LOG_FILE` | `data/logs.jsonl` | Archivo JSONL de persistencia del log (`""` desactiva) |
-| `LOG_CONSOLE` | `true` | Imprime los logs en la consola del proceso |
-| `LOG_LEVEL` | `info` | Nivel mínimo impreso en consola (`info`/`warning`/`critical`) |
-| `LOG_HTTP` | `true` | Registra cada petición HTTP (método, ruta, status, duración) |
-| `LOG_TELEMETRY_EVERY` | `5` | Línea de telemetría (temps y media) cada N ticks; `0` desactiva |
-| `MAX_CONSECUTIVE_FAILURES` | `5` | Fallos consecutivos para estado `error` (1–255) |
-| `PENDING_POOL_CAPACITY` | `100` | Capacidad del pool global de tareas pendientes (1–10000) |
-| `RULES_FILE` | `data/default-rules.json` | Reglas iniciales cargadas al arranque |
-| `DB_ENABLED` | `true` | Activa el escritor time-series hacia MariaDB/MySQL |
-| `DB_HOST` | `localhost` | Host de la BD (`db` dentro de Docker Compose) |
-| `DB_PORT` | `3306` | Puerto de la BD |
-| `DB_NAME` | `waitt` | Base de datos |
-| `DB_USER` | `waitt` | Usuario (creado por el docker-compose) |
-| `DB_PASSWORD` | `waitt` | Contraseña del usuario |
-| `DB_FLUSH_MS` | `1000` | Intervalo de vaciado del buffer hacia la BD |
-| `DB_MAX_BUFFER` | `1000` | Filas máximas antes de forzar un vaciado |
-| `DB_SCHEMA_FILE` | `../docker/mysql/init/01-schema.sql` | DDL ejecutado al arrancar (fuente única) |
+| `CORS_ORIGIN` | `http://localhost:5173` | Origen permitido |
+| `NODE_QUEUE_CAPACITY` | `50` | Cola local por nodo |
+| `STACK_CAPACITY` | `20` | Pila LIFO |
+| `PENDING_POOL_CAPACITY` | `100` | Pool global |
+| `LOG_CAPACITY` | `200` | Buffer de logs |
+| `LOG_FILE` | `data/logs.jsonl` | Archivo JSONL (`""` desactiva) |
+| `LOG_CONSOLE` | `true` | Logs en consola |
+| `LOG_LEVEL` | `info` | Nivel mínimo en consola |
+| `LOG_HTTP` | `true` | Log de cada petición HTTP |
+| `LOG_TELEMETRY_EVERY` | `5` | Línea de telemetría cada N ticks; `0` desactiva |
+| `MAX_CONSECUTIVE_FAILURES` | `5` | Fallos para estado `error` |
+| `RULES_FILE` | `data/default-rules.json` | Semilla de reglas |
 
-### Control IA
+### 12.2 Base de datos
 
 | Variable | Default | Efecto |
 |---|---|---|
-| `AI_CONTROL_ENABLED` | `false` | Arranca con el control activo; la UI/API puede cambiarlo en caliente |
-| `AI_CONTROL_HOT_DELTA` / `COLD_DELTA` | `1.5` | Banda de disparo respecto al objetivo (°C) |
-| `AI_CONTROL_RESTORE_DELTA` | `0.5` | Banda para restaurar objetivo/ventilador |
-| `AI_CONTROL_CONFIRMATIONS` | `2` | Predicciones consecutivas necesarias |
-| `AI_CONTROL_COOLDOWN_MS` | `5000` | Espera mínima entre acciones del mismo nodo |
-| `AI_CONTROL_MAX_ACTIONS_PER_MIN` | `20` | Límite global de acciones |
-| `AI_CONTROL_LOAD_STEP/MIN/MAX` | `0.1` / `0.05` / `0.8` | Rango y paso de carga |
-| `AI_CONTROL_TARGET_MARGIN` / `STEP` | `1.5` / `0.5` | Offset máximo (tope duro 1.5 °C) y paso del objetivo efectivo |
-| `AI_CONTROL_TASK_INTERVAL_MS` | `15000` | Mínimo entre tareas encoladas por la IA |
+| `DB_ENABLED` | `true` | Activa el sink time-series |
+| `DB_HOST` | `localhost` | Host (`db` dentro de Docker Compose) |
+| `DB_PORT` | `3306` | Puerto |
+| `DB_NAME` | `waitt` | Base de datos |
+| `DB_USER` | `waitt` | Usuario |
+| `DB_PASSWORD` | `waitt` | Contraseña |
+| `DB_FLUSH_MS` | `1000` | Intervalo de vaciado |
+| `DB_MAX_BUFFER` | `1000` | Filas antes de forzar vaciado |
+| `DB_SCHEMA_FILE` | `../docker/mysql/init/01-schema.sql` | DDL idempotente |
+
+### 12.3 Inferencia
+
+| Variable | Default | Efecto |
+|---|---|---|
+| `INFERENCE_ENABLED` | `true` | Lanza el worker Python y la auto-inferencia |
+| `INFERENCE_HORIZON_MS` | `15000` | Horizonte con el que se entrenó y se predice |
+| `INFERENCE_THROTTLE_MS` | `500` | Mínimo entre inferencias por nodo |
+| `INFERENCE_TIMEOUT_MS` | `2000` | Timeout por petición |
+| `INFERENCE_MIN_SAMPLES` | `9` | Muestras mínimas de la ventana |
+| `INFERENCE_WINDOW` | `25` | Tamaño de la ventana deslizante |
+| `INFERENCE_PYTHON` | `ml/.venv/Scripts/python.exe` | Intérprete del worker |
+
+### 12.4 Control IA
+
+| Variable | Default | Efecto |
+|---|---|---|
+| `AI_CONTROL_ENABLED` | `false` | Arranca con control activo |
+| `AI_CONTROL_HOT_DELTA` / `COLD_DELTA` | `1.5` | Banda de disparo (°C) |
+| `AI_CONTROL_RESTORE_DELTA` | `0.5` | Banda de restauración |
+| `AI_CONTROL_CONFIRMATIONS` | `2` | Predicciones consecutivas |
+| `AI_CONTROL_COOLDOWN_MS` | `5000` | Espera entre acciones del nodo |
+| `AI_CONTROL_MAX_ACTIONS_PER_MIN` | `20` | Límite global |
+| `AI_CONTROL_LOAD_STEP` / `MIN` / `MAX` | `0.1` / `0.05` / `0.8` | Rango y paso de carga |
+| `AI_CONTROL_TARGET_MARGIN` / `STEP` | `1.5` / `0.5` | Offset máximo y paso |
+| `AI_CONTROL_TASK_INTERVAL_MS` | `15000` | Mínimo entre tareas de la IA |
 | `AI_CONTROL_EMERGENCY_DELTA` | `10` | Diferencia para apagado de emergencia |
-| `AI_CONTROL_RESTART_DELTA` | `2` | Umbral de reactivación de un nodo apagado por la IA |
-| `AI_CONTROL_MIN_DOWNTIME_MS` | `30000` | Tiempo mínimo apagado antes de reactivar |
-| `AI_CONTROL_MANUAL_PAUSE_MS` | `30000` | Pausa tras detectar un cambio manual |
+| `AI_CONTROL_RESTART_DELTA` | `2` | Umbral de reactivación |
+| `AI_CONTROL_MIN_DOWNTIME_MS` | `30000` | Downtime mínimo |
+| `AI_CONTROL_MANUAL_PAUSE_MS` | `30000` | Pausa por cambio manual |
 | `AI_CONTROL_ALLOW_FAN/LOAD/TARGET/TASKS` | `true` | Acciones permitidas |
-| `AI_CONTROL_ALLOW_SHUTDOWN` | `false` | Apagado de emergencia (requiere activarlo) |
+| `AI_CONTROL_ALLOW_SHUTDOWN` | `false` | Apagado de emergencia |
 
-## Persistencia (S5)
+### 12.5 Eventos
 
-- **Log acotado persistente** (`infra/logger.ts`): el buffer en memoria (`LOG_CAPACITY`) se
-  vuelca a `LOG_FILE` en JSONL (una `LogEntry` por línea). Cuando el buffer excede la
-  capacidad, se reescribe el archivo completo desde memoria (el archivo respeta el mismo
-  límite). Al arrancar se restaura el buffer desde el archivo, ignorando líneas corruptas;
-  `clear()` y `DELETE /api/logs` vacían también el archivo.
-- **Salida a consola**: el `LogStore` puede espejar cada entrada a la consola del proceso
-  (`LOG_CONSOLE`, filtrada por `LOG_LEVEL`, con colores por nivel si hay TTY). Además, el
-  middleware HTTP de `httpServer.ts` registra cada petición (`LOG_HTTP`) y el motor emite
-  una línea de telemetría periódica con las temperaturas y su media (`LOG_TELEMETRY_EVERY`
-  ticks); todo ello entra también al buffer y al archivo.
-- **Reglas** (`infra/rulesLoader.ts`): `RULES_FILE` es una semilla de solo lectura que se
-  carga al arrancar. Crear, editar o eliminar reglas por API vive solo en memoria: no se
-  reescribe el archivo y reiniciar restablece las reglas originales.
-- **BD time-series**: con `DB_ENABLED` (defecto `true`), el bootstrap abre una **conexión
-  única estilo PDO** (`infra/database.ts`, config de `config/database.ts`) y un
-  `TimeSeriesSink` se suscribe al `EventBus` escribiendo por lotes en MariaDB/MySQL siguiendo
-  el esquema de abajo. El DDL se ejecuta al arranque desde `DB_SCHEMA_FILE` (fuente única con
-  `docker/mysql/init/01-schema.sql`, idempotente; también `Database.ensureSchema`). El Docker
-  Compose de la raíz levanta MariaDB + phpMyAdmin interpolando el `.env` raíz; las
-  credenciales de desarrollo son `waitt`/`waitt`.
-
-## Capa de base de datos (`Database`, estilo PDO)
-
-`config/database.ts` traduce las env `DB_*` de `loadConfig` a `DatabasePoolSettings` (host,
-puerto, base de datos, usuario, contraseña y opciones del pool) — es el **único punto que
-define la conexión**, no hay credenciales hardcodeadas en consumidores. `index.ts` hace
-`Database.open(loadDatabaseSettings(config))` (o `null` si `DB_ENABLED=false`) y la inyecta
-en el `TimeSeriesSink`; el shutdown cierra la conexión con `database.close()`.
-
-`infra/database.ts` envuelve el pool de `mysql2/promise` y ofrece una API tipo PDO:
-
-| Método | Descripción |
-|---|---|
-| `query<T>(sql, params)` | Consulta cruda por el pool (para el DDL multi-statement) |
-| `execute<T>(sql, params)` | Statement **preparado**; acepta `?` o placeholders **nombrados** `:nombre` (se expanden a bind posicional) |
-| `insert(table, row)` | `INSERT` preparado desde una fila-objeto (columnas saneadas) |
-| `insertMany(table, rows)` | `INSERT` multi-fila desde objetos; `{ affectedRows }` en vacío no ejecuta nada |
-| `transaction<T>(work)` | `BEGIN`/`COMMIT`/`ROLLBACK`/`release` sobre una **misma** conexión (`getConnection`); `work` recibe una sesión con `query`/`execute` |
-| `ensureSchema(file)` | Ejecuta el DDL una sola vez (idempotente; `null` = sin esquema); `ready` indica si quedó listo |
-| `close()` | Cierra el pool |
-
-Los identificadores de tabla y columna se validan con `/^[A-Za-z_][A-Za-z0-9_]*$/` (anti
-inyección); el bind de valores siempre va posicional/preparado. El driver es inyectable
-(`DbDriver`) para probar la capa con un recorder en `test/dbDriver.ts`.
-
-## Esquema de la BD time-series
-
-Implementado en MariaDB/MySQL (Docker Compose de la raíz) con diseño pensado también para
-otras bases de series temporales (InfluxDB, TimescaleDB). Dos mediciones: `telemetry` captura
-el estado térmico
-por nodo en cada evento de tick; `events` registra los eventos de cola/pila/log sin perder el
-detalle estructurado.
-
-### Medición `telemetry`
-
-| Campo | Tipo | Fuente |
+| Variable | Default | Efecto |
 |---|---|---|
-| `ts` | timestamp | `NodeDto.updatedAt` (ms) |
-| `node_id` | tag | `NodeDto.id` |
-| `node_type` | tag | `NodeDto.type` (`general`/`worker`) |
-| `current_temp` | float | `NodeDto.currentTemp` |
-| `target_temp` | float | `NodeDto.targetTemp` |
-| `ambient_temp` | float | `NodeDto.ambientTemp` |
-| `workload` | float | `NodeDto.workload` |
-| `task_heat` | float | `NodeDto.taskHeat` (0 en filas antiguas) |
-| `status` | field | `STATUS_CODE[NodeDto.status]` (0/1/2) |
-| `fan_active` | bool | `NodeDto.fanActive` |
-| `queue_length` | int | `NodeDto.queue.size` |
-| `stack_size` | int | `NodeDto.stack.size` |
+| `EVENTS_ENABLED` | `false` | Generador automático |
+| `EVENTS_INTERVAL_MS` | `5000` | Intervalo de evaluación |
+| `EVENT_TASK_ARRIVAL_PROBABILITY` | `0.08` | Probabilidad de tráfico |
+| `EVENT_THERMAL_SPIKE_PROBABILITY` | `0.02` | Probabilidad de pico térmico |
+| `EVENT_NODE_FAILURE_PROBABILITY` | `0.01` | Probabilidad de fallo |
+| `EVENT_NODE_RECOVERY_PROBABILITY` | `0.03` | Probabilidad de recuperación |
+| `EVENT_FAN_FAILURE_PROBABILITY` | `0.01` | Probabilidad de fallo de ventilador |
+| `EVENT_WORKLOAD_SURGE_PROBABILITY` | `0.02` | Probabilidad de pico de carga |
+| `EVENT_SYNTHETIC_ALERT_PROBABILITY` | `0.01` | Probabilidad de alerta sintética |
 
-### Medición `events`
+## 13. Cómo extender el proyecto
 
-| Campo | Tipo | Fuente |
-|---|---|---|
-| `ts` | timestamp | `LogEntry.ts` / `StackEntry.ts` |
-| `node_id` | tag | `nodeId` (optativo) |
-| `kind` | tag | `StackEntryKind` (`event`/`task`/`rule`/`alert`/`change`) o `LogLevel` |
-| `type` | tag | `LogType` (`system`/`api`/`rule`/`task`/`node`/`alert`) |
-| `label` | field | `StackEntry.label` |
-| `message` | field | `LogEntry.message` |
-| `meta` | field | JSON estructurado (`LogEntry.meta` / `StackEntry.meta`) |
+### 13.1 Agregar un tipo de acción
 
-El DDL real (MariaDB/MySQL) vive en `docker/mysql/init/01-schema.sql` — fuente única
-ejecutada tanto por Docker en el primer arranque como por `Database.ensureSchema` al
-conectar. Los timestamps se guardan como ms y una vista `telemetry_minute` resume las
-muestras por minuto para consultas rápidas.
+1. Añade el nombre a `ActionType` y `ACTION_TYPE_VALUES` en `domain/types.ts`.
+2. Añade un `case` en `runAction` (`domain/actions.ts`) con `numParam`/`strParam`.
+3. Añade tests en `test/rules.test.ts` y, si aplica, en `test/ai-control.test.ts`.
+4. Si la IA debe usarla, añade el `AiActionKind` y la decisión en `domain/aiControl.ts`.
 
-Las filas las genera el `TimeSeriesSink` (`infra/timeseriesSink.ts`) suscrito al `EventBus`,
-que acumula **filas-objeto** y las vuelca con `database.insertMany`:
-`node:updated` → `telemetry`; `rule:triggered`, `task:queued/completed/pending` y `alert` →
-`events`. Escribe por lotes (cada `DB_FLUSH_MS` o `DB_MAX_BUFFER` filas) y ejecuta
-`ensureSchema` en cada vaciado hasta quedar listo; si la BD falla, solo registra el error
-(vía `onError` → log crítico, throttled) y la simulación continúa. `PersistenceRepository`
-en memoria sigue encargándose del snapshot.
+### 13.2 Agregar un campo a un nodo
 
-## Pipeline analítico (S6, `ml/`)
+1. `NodeConfig` y `SimNode` en `domain/node.ts`.
+2. `NodeDto` y `toDto()` en `domain/types.ts` / `node.ts`.
+3. Si es editable: `patchNodeSchema` o `createNodeSchema` en `api/validation.ts` y `nodes.routes.ts`.
+4. Si afecta al térmico: `thermalStep` o `thermal.ts`.
+5. Si afecta a la BD: columna en `docker/mysql/init/01-schema.sql`, `TimeSeriesSink` y `ml/features.py`.
+6. Reentrena el modelo si cambia la física o las features.
 
-Pipeline reproducible en Python que consume la BD time-series y produce el modelo de
-predicción, las métricas y las alertas. Orquestado con `Python -m ml.train` (ver
-[ml/README.md](../ml/README.md)); cada paso es un módulo autocontenido:
+### 13.3 Agregar una regla por defecto
 
-| Paso | Módulo | Salida |
-|---|---|---|
-| Conexión pymysql (placeholders `:nombre`, `insert_many`) | `db.py` | — |
-| Lectura de `telemetry` | `export.py` | DataFrame + snapshot CSV |
-| Feature engineering (lags t-1..t-8, delta, medias móviles, contexto con `task_heat`, `rel_time_ms`) | `features.py` | `X`, `y`, `meta` |
-| Target a `ML_HORIZON_MS` futura vía `searchsorted` | `features.py` | serie objetivo (agnóstico a `TICK_MS`) |
-| Split cronológico 80/20 por nodo + `GradientBoostingRegressor(seed)` | `model.py` | modelo + baseline `temp_lag_1` |
-| MAE/RMSE globales y por nodo, mejora % vs baseline | `metrics.py` | `metrics.json` |
-| Umbral `media + N·σ` de residuos de test → alertas formato `events` | `anomaly.py` | `alerts.jsonl` |
-| Ollama explica el top-K (JSON `diagnostico`/`accion`, fallo no fatal) | `ollama.py` | `meta.ollama` en las alertas |
-| Orquestador y escritura opcional en `events` (`--write-db`) | `train.py` | `out/*` + filas `kind=alert, type=ai` |
-| Inferencia de producción (`predict --node`) | `predict.py` | predicción a `T+15 s` |
+Añade un objeto válido en `backend/data/default-rules.json`. `rulesLoader` filtra por `isRuleInput` (requiere `name`, `metric`, `op`, `value`, `action`). Reinicia para recargar la semilla.
 
-Diseño clave: el simulador térmico es tan suave que en régimen estacionario la baseline de
-persistencia es casi perfecta; el pipeline predice a **15 s reales** (`ML_HORIZON_MS`) e incorpora
-`task_heat` y `status`. En la sesión de reentrenamiento con cooldown e inactividad el MAE global fue
-0.231 °C (sube a ~1 °C si el test incluye transiciones de apagado/encendido). Con
-`ML_THRESHOLD_SIGMA=3` los datos nominales no generan alertas; el ejemplo del README con
-σ=1.0 demuestra el flujo completo. Los artefactos (`ml/out/`, `ml/data/`) están
-gitignoreados y se regeneran con `ml.train`; los tests pytest (`ml/tests/`, 18) importan
-`ml.*` vía `conftest.py` que añade la raíz del repo a `sys.path`.
+### 13.4 Agregar un evento
 
-## Inferencia en vivo (S7, `infra/ai/`)
+1. Añade el id a `EventId` y `EVENT_IDS` en `domain/events.ts`.
+2. Añade la definición a `EVENT_CATALOG`.
+3. Implementa el efecto en `applyEvent`.
+4. Si muta estado, añade el id a `MUTATING_EVENTS` en `api/events.routes.ts`.
+5. Añade la variable `EVENT_*_PROBABILITY` en `config.ts`, `index.ts` y `.env.example`.
+6. Añade tests en `test/events.test.ts` y, si aplica, en `test/events-api.test.ts`.
+7. Documenta el evento en la guía de usuario y en la junior.
 
-El modelo entrenado se sirve desde el propio backend Node, sin proceso HTTP aparte: al arrancar
-se lanza un **worker Python persistente** y el servicio de inferencia lo consume por JSON
-línea a línea (stdin/stdout).
+### 13.5 Agregar una acción de IA
 
-- `infra/ai/inferenceWorker.ts`: `spawn` de `python -m ml.worker` (resuelve `INFERENCE_PYTHON`
-  respecto a la raíz del repo), correlación petición/respuesta por `id`, `timeout` por petición
-  (`INFERENCE_TIMEOUT_MS`, con margen ampliado para `version()` por el cold start), `restart`
-  perezoso si el proceso cae, y `rejectAll` de las peticiones en vuelo al salir.
-- `ml/worker.py`: carga `model.joblib` + `model.json`, versiona el modelo por `sha256` del
-  `.joblib` (o `model_version`/`git_sha` del meta) y expone `ping`/`version`/`predict`. Para cada
-  `predict` reconstruye las features con `build_inference_features` (mismo esquema que el
-  entrenamiento pero **sin target**, porque las filas más recientes no tienen futuro) y fija
-  `rel_time_ms` contra un origen por nodo para mantener la paridad con el dataset de entrenamiento.
-- `infra/ai/inferenceService.ts`: en cada `state:update` guarda una muestra por nodo en una
-  ventana deslizante (`INFERENCE_WINDOW`) y, cuando hay `INFERENCE_MIN_SAMPLES`, lanza la
-  inferencia (auto-inferencia **siempre activa**, con `INFERENCE_THROTTLE_MS` por nodo y una sola
-  inferencia en vuelo por nodo). El resultado se emite como `inference:completed` en el `EventBus`.
+1. Añade el `AiActionKind` en `domain/aiControl.ts`.
+2. Añade la decisión en `decideAiAction`.
+3. Añade el `case` en `InferenceController.apply`.
+4. Añade el flag `AI_CONTROL_ALLOW_*` si debe poder desactivarse.
+5. Añade tests en `test/ai-control.test.ts` e `test/inference.test.ts`.
 
-Orden de arranque en `index.ts`: `inference.start()` (suscripción) → `inferenceWorker.start()`
-(spawn) → log de la versión del modelo. En el `shutdown` se llama a `inference.stop()` antes de
-cerrar la BD, para matar el worker.
+### 13.6 Agregar una feature ML
 
-La persistencia la hace `TimeSeriesSink`: además de `telemetry`/`events`, al recibir
-`inference:completed` inserta en `inferences` (ts, node_id, predicted_temp, actual_temp,
-horizon_ms, model_version, latency_ms, features_hash, meta con el error `predicted - actual`) y
-añade una fila `kind=inference type=inference` a `events`.
+1. Añade la columna a `telemetry` y a `TimeSeriesSink`.
+2. Añade la feature en `ml/features.py` (`build_features` y `build_inference_features`).
+3. Añade el dato a `InferenceService` y al mapeo de `ml/worker.py`.
+4. Reentrena y compara MAE/RMSE.
+5. Actualiza `model.json`/`metrics.json` y la documentación.
 
-## Arquitectura del frontend (`frontend/`)
+### 13.7 Agregar una tabla o columna
 
-React 19 (JSX sin TypeScript) + Vite; los hooks consumen el backend por el proxy de Vite
-(`/api` y `/socket.io` con `ws`):
+1. Edita `docker/mysql/init/01-schema.sql` (idempotente).
+2. Añade el mapeo en `TimeSeriesSink`.
+3. Añade el método en `Database` si hace falta.
+4. Añade tests con el driver falso.
+5. Documenta la consulta de ejemplo.
 
-- `hooks/useSimulation.js`: socket `io()` singleton; `state:update` → snapshot, `alert` → alertas
-  (máx 20); state inicial vía `GET /api/system` y `GET /api/sim/status`; api REST
-  (`pause/resume/reset/patchSystem/patchNode/enqueue/submitTask/clearPool`).
-- `hooks/useRules.js`: `GET /api/rules` + refresh en `rule:triggered`; api `toggle`/`remove`;
-  conserva los últimos disparos (`triggered`) que muestra `RulesPanel`.
-- `hooks/useInference.js`: socket `inference:completed` con batching de 250 ms → última predicción
-  por nodo y contador de sesión; `GET /api/inference/version` al montar y al reconectar (si
-  responde 503 marca la inferencia como deshabilitada). `lib/recommendation.js` deriva la
-  recomendación (estable / enfriar / subir carga) comparando la predicción con el objetivo del nodo.
+### 13.8 Agregar un panel de UI
 
-Representación 3D (Three.js + `@react-three/fiber` + `@react-three/drei`) en `three/`: la escena
-`Scene.jsx` se carga con `React.lazy` para no inflar el chunk inicial; `Floor` (rejilla de suelo),
-`NodeTile` (cabina extruida por nodo), `NodeLabel` (Html con chips) y `Layout` (rejilla automática:
-workers ordenados por id en columnas `ceil(√N)`, node-general en zona propia trasera).
+1. Crea el componente en `frontend/src/components/`.
+2. Añade el hook o la API que necesite.
+3. Añade la pestaña en `ControlCenter.jsx` o el panel flotante en `App.jsx`.
+4. Respeta `readOnly` en replay y `disabled` cuando no haya conexión.
+5. Añade estilos en `App.css` y prueba claro/oscuro y móvil.
 
-Detalles de implementación:
-
-- **Calor**: `heatColor(t)` (rampa azul→cian→ambar→rojo) y `tempBand(t, lo, hi)` normalizan a
-  `[0,1]` con `band = targetTemp ± 8` (calculado en `App.jsx` y compartido con la leyenda).
-  La altura del bloque crece con el calor (`0.45 + heat*1.6`, +0.35 el general).
-- **Estado**: inactive gris `#33415c`, error `#6b2f2f` con pulso rojo, ventilador → disco cian
-  giratorio. Selección: anillo pulsante cian y label siempre visible para el nodo seleccionado.
-- **Cámara**: cenital `[0, d, d*0.82]`, fov 42, `OrbitControls` sin pan (polar 0.12–1.15,
-  distancia 5–70). Nodos inactivos se renderizan a media opacidad; al pulsar se seleccionan
-  (`onSelect` en App mantiene `selectedId`).
-
-UI en `components/`: `Header` (objetivo global, pausa/resumen, reset), `SummaryBar` (resumen por
-estado), barra lateral con secciones colapsables (`CollapsiblePanel`): `NodeDetailPanel` (objetivo
-±5°, ventilador, encolar tarea, métricas, predicción del modelo y su recomendación, cola, pila LIFO
-y `Sparkline` SVG con línea de target y marcador de predicción), `ModelPanel` (versión y horizonte
-del modelo, predicción/real/latencia por nodo y recomendación), `EfficiencyPanel` (banda ±2 °C,
-desvío medio, sesión en banda, ventiladores, carga, pool y sparklines de temperatura media y pool),
-`PoolPanel` (pool global + `TaskForm`), `RulesPanel` (reglas + últimos disparos), `AlertsPanel` y
-`ReplayControls`.
-
-**Historial y replay**: `hooks/useHistory.js` acumula los últimos `MAX_SAMPLES=600` snapshots de
-`state:update` (socket propio), guarda también un índice de replay (−1 = vivo). En modo replay,
-`App.jsx` usa `replaySnapshot` como fuente de verdad (efectiva) para la escena y los paneles;
-`ReplayControls` permite barrido manual, reproducción automática (intervalo 600 ms) y volver a
-vivo. Es 100 % client-side: no requiere backend ni persistencia adicional.
-
-## Cómo extender el proyecto
-
-### 1. Agregar un tipo de acción
-
-1. Añade el nombre al union `ActionType` y al array `ACTION_TYPE_VALUES` en `domain/types.ts` (el enum zod de `validation.ts` lo usa directamente).
-2. Añade un `case` en `runAction` (`domain/actions.ts`) usando `numParam`/`strParam` para leer `actionParams`, mutar el nodo, hacer `pushEvent` y loguear.
-3. (Opcional) Añade un ejemplo en `data/default-rules.json` y tests en `test/rules.test.ts`.
-
-### 2. Agregar un campo a un nodo
-
-1. `NodeConfig` (entrada) y la clase `SimNode` en `domain/node.ts`.
-2. `NodeDto` en `domain/types.ts` y su emisión en `toDto()`.
-3. Si es editable por API: `patchNodeSchema` (o `createNodeSchema`) en `api/validation.ts` y su aplicación en `nodes.routes.ts`.
-4. Si afecta al térmico: hazlo valer en `SimNode.thermalStep` o en `thermal.ts`.
-
-### 3. Agregar una regla por defecto
-
-Añade un objeto válido en `backend/data/default-rules.json`. El `rulesLoader` filtra por `isRuleInput` (requiere `name`, `metric`, `op`, `value`, `action`) y lo ignora si es inválido. Se pueden tocar en caliente por `PATCH /api/rules/:id` sin reiniciar.
-
-### 4. Persistencia real
-
-El log persiste en JSONL (`LOG_FILE`), las reglas se recargan de `RULES_FILE` en cada arranque
-(las mutaciones en vivo no se persisten) y la telemetría/eventos se escriben en MariaDB/MySQL
-vía la capa `Database` + `TimeSeriesSink`
-(véase "Persistencia (S5)" y "Capa de base de datos"). Para nuevas consultas/escrituras
-reutiliza la conexión única inyectada (`config/database.ts` → `index.ts`): usa
-`execute`/`transaction` con placeholders nombrados, nunca credenciales ni SQL ensamblado en
-el consumidor. Lo que sigue en memoria es el estado del sistema
-(`PersistenceRepository` con su `MemoryPersistence` inyectado en `index.ts`): para
-persistirlo, implementa la interfaz (`load(): SystemSnapshotDto | null`,
-`save(snapshot): void`) y conéctalas en el bootstrap; el shutdown ya llama a
-`persistence.save(...)`.
-
-## Flujo de trabajo con git
+## 14. Verificación y git
 
 Antes de commitear:
 
-```bash
+```powershell
 cd backend
-pnpm.cmd run typecheck && pnpm.cmd run test && pnpm.cmd run build
+pnpm.cmd run typecheck
+pnpm.cmd run test
+pnpm.cmd run build
+
+cd ../frontend
+npm.cmd test
+npm.cmd run lint
+npm.cmd run build
+
+cd ..
+ml\.venv\Scripts\python -m pytest ml
 ```
 
-- `typecheck` falla con imports/locals sin usar (`noUnusedLocals`/`noUnusedParameters`).
-- 146 tests vitest en `backend/test/` (térmico, colas de prioridad/pila, dispatcher, reglas con
-  métricas predictivas, acciones, persistencia de log, capa `Database`, `TimeSeriesSink`, estrés,
-  calibración térmica, fallos, WebSocket y configuración).
-- El frontend valida con `npm.cmd test` (11 tests `node:test`), `npm.cmd run lint` y `npm.cmd run build`.
-- Resultados de estrés, calibración y tolerancia a fallos en [pruebas-calibracion.md](pruebas-calibracion.md).
+- `typecheck` falla con locals/parámetros sin usar (`noUnusedLocals`/`noUnusedParameters`).
+- 146 tests vitest en `backend/test/`.
+- 11 tests `node:test` en frontend.
+- 18 tests pytest en `ml/tests/`.
+- `npm.cmd run build` debe separar la escena en su propio chunk; el aviso de chunk grande es esperado por Three.js.
 
-Mensajes en español, imperativo, con scope: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. Ejemplos: `feat(backend): ...`, `feat(frontend): ...`. No commitear artefactos de build (`node_modules/`, `dist/`, `.pio/`).
+Commits en español, imperativo, con scope: `feat:`, `fix:`, `docs:`, `chore:`, `test:`. No commitear artefactos de build (`node_modules/`, `dist/`, `ml/.venv/`, `ml/out/`, `ml/data/`).
+
+## 15. Troubleshooting técnico
+
+### `ECONNREFUSED` en Vite
+
+El proxy apunta a un puerto donde no hay backend. Compara:
+
+```text
+PORT del backend == target de /api y /socket.io en vite.config.js
+```
+
+Si el backend está en 3001:
+
+```js
+'/api': 'http://localhost:3001',
+'/socket.io': { target: 'http://localhost:3001', ws: true },
+```
+
+### CORS
+
+`CORS_ORIGIN` debe ser el origen exacto del frontend (`http://localhost:5173`). No uses `*` con credenciales.
+
+### `EADDRINUSE`
+
+Otro proceso ocupa el puerto. En PowerShell:
+
+```powershell
+Get-NetTCPConnection -LocalPort 3000 -State Listen
+```
+
+Cierra el proceso o cambia `PORT` y el proxy.
+
+### La BD no responde
+
+El backend sigue simulado. Busca `No se pudo inicializar el esquema BD` o `Error escribiendo en la BD` en el log. Levanta MariaDB:
+
+```powershell
+docker compose up -d
+```
+
+### Inferencia 503 o sin predicciones
+
+- `INFERENCE_ENABLED=false`: no hay worker.
+- No existe `ml/out/model.joblib`: entrena con `python -m ml.train`.
+- `INFERENCE_PYTHON` no apunta al intérprete correcto.
+- El worker murió: el servicio lo reinicia en la siguiente petición.
+- Ventana insuficiente: espera `INFERENCE_MIN_SAMPLES` ticks.
+
+### El generador de eventos no hace nada
+
+`EVENTS_ENABLED=false` por defecto. Actívalo por API o por el panel. Revisa también `enabled`, `probability` y `cooldownMs` de cada evento.
+
+### El replay no permite editar
+
+Es intencional. En replay, `App.jsx` usa `replaySnapshot` y el centro de control, el drawer y el panel de eventos pasan a solo lectura. Vuelve a vivo para editar.
+
+### Las reglas nuevas desaparecen al reiniciar
+
+`RULES_FILE` es una semilla de solo lectura. Las mutaciones por API viven en memoria. Para persistirlas, añádelas al archivo semilla o implementa persistencia de reglas.
