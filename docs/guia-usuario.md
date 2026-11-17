@@ -4,170 +4,329 @@ WAItt es el acrónimo del **Sistema de cuidado del agua mediante técnicas de in
 
 ## Qué es WAItt
 
-WAItt es un **simulador de monitoreo térmico**. En lugar de depender de sensores físicos, genera una simulación de servidores (nodos) que se calientan, se enfrían, encargan tareas y pueden entrar en estado de alerta. Sirve para explorar cómo se comportaría un sistema de monitoreo de temperatura real, sin necesidad de hardware.
+WAItt es un **simulador de monitoreo térmico**. En lugar de depender de sensores físicos, genera servidores simulados (nodos) que se calientan, se enfrían, reciben tareas y pueden entrar en alerta. Sirve para explorar cómo se comportaría un sistema de monitoreo real sin hardware.
 
-La aplicación se compone de dos piezas que trabajan juntas:
+La aplicación tiene dos piezas:
 
-- **Backend (el "cerebro")**: un servidor que sostiene la simulación, aplica el modelo térmico, procesa colas de tareas y evalúa reglas automáticas. Corre en `http://localhost:3000`.
-- **Frontend (el "tablero")**: la interfaz web que abre en el navegador y muestra, en vivo, la temperatura de cada nodo, sus tareas, sus eventos y sus alertas. Corre en `http://localhost:5173`.
+- **Backend (el cerebro)**: sostiene la simulación, aplica el modelo térmico, procesa colas, evalúa reglas, sirve la API y habla por WebSocket.
+- **Frontend (el tablero)**: la interfaz web que muestra la escena 3D, el estado de los nodos, las reglas, la IA, los eventos y el replay.
 
-En este simulador, los "sensores" son simulados: cada nodo tiene una temperatura objetivo y una temperatura ambiente, y el tiempo que tarda en acercarse a su objetivo depende del modelo térmico interno.
+Opcionalmente hay una **base de datos** para guardar telemetría y un **modelo de IA** para predecir temperatura.
 
-## Requisitos previos
+## Requisitos
 
-- **Node.js** (versión 20 o superior).
-- **pnpm** para el backend: `npm install -g pnpm`.
-- **npm** (incluido con Node.js) para el frontend.
-- En Windows, los comandos se ejecutan con el sufijo `.cmd` (`pnpm.cmd`, `npm.cmd`).
+| Herramienta | Uso |
+|---|---|
+| Node.js 20 o superior | Backend y frontend |
+| pnpm | Backend |
+| npm | Frontend |
+| Docker Desktop | Opcional, para MariaDB + phpMyAdmin |
+| Python 3.14 + `ml/.venv` | Opcional, para inferencia y entrenamiento |
+| Ollama | Opcional, para explicar anomalías |
 
-## Cómo levantar la aplicación paso a paso
+En Windows, los shims `pnpm`/`npm` de PowerShell pueden estar bloqueados por la policy de ejecución. Usa siempre `pnpm.cmd` y `npm.cmd`.
 
-La aplicación necesita **dos ventanas de terminal**: una para el backend y otra para el frontend.
+## Arranque rápido
 
 ### 1. Backend
 
-```bash
+```powershell
 cd backend
 pnpm.cmd install
 pnpm.cmd dev
 ```
 
-Al arrancar verás un mensaje similar a:
+Debe aparecer:
 
+```text
+Backend WAItt escuchando en http://localhost:3000 (CORS: http://localhost:5173)
+Simulación iniciada (tick cada 1000 ms)
 ```
-Backend WAItt escuchando en http://localhost:3000
-```
-
-Puedes comprobar que está vivo abriendo `http://localhost:3000/health` en el navegador. Debe responder algo como `{"status":"ok","running":true,...}`.
 
 ### 2. Frontend
 
-En una **segunda ventana de terminal**:
+En otra terminal:
 
-```bash
+```powershell
 cd frontend
 npm.cmd install
 npm.cmd run dev
 ```
 
-Cuando termine, abre la dirección que indica el mensaje (habitualmente):
+Abre **http://localhost:5173**.
 
-```
-http://localhost:5173
+### 3. Base de datos (opcional)
+
+```powershell
+docker compose up -d
 ```
 
-Deberías ver el panel **WAItt · Simulador de temperatura** con una etiqueta verde "conectado" y el estado "en ejecución".
+Levanta MariaDB en `localhost:3306` y phpMyAdmin en `http://localhost:8080`. El backend escribe telemetría si `DB_ENABLED=true`. Si la BD no está, el simulador sigue funcionando y solo registra el error.
+
+### 4. Modelo de IA (opcional)
+
+El backend busca `ml/out/model.joblib`. Si no existe, no llegan predicciones y la sección de IA se queda en «Esperando inferencias»; el resto sigue funcionando.
+
+Para entrenar:
+
+```powershell
+ml\.venv\Scripts\python -m ml.train
+```
+
+Necesita telemetría en la BD. Deja el backend corriendo unos minutos con `DB_ENABLED=true`.
+
+## Puertos: la regla que evita el error `ECONNREFUSED`
+
+El backend escucha en `PORT`. El proxy de Vite debe apuntar al **mismo puerto**.
+
+| Pieza | Default | Ejemplo con 3001 |
+|---|---|---|
+| Backend | `3000` | `$env:PORT='3001'; pnpm.cmd dev` |
+| Proxy Vite | `http://localhost:3000` | `http://localhost:3001` |
+| CORS | `http://localhost:5173` | `http://localhost:5173` |
+| Frontend | `5173` | `5173` |
+
+Si ves en la terminal de Vite:
+
+```text
+[vite] http proxy error: /api/system
+AggregateError [ECONNREFUSED]
+```
+
+el proxy apunta a un puerto donde no hay backend. Revisa `frontend/vite.config.js`:
+
+```js
+'/api': 'http://localhost:3001',
+'/socket.io': { target: 'http://localhost:3001', ws: true },
+```
+
+Y arranca el backend con el mismo puerto:
+
+```powershell
+cd backend
+$env:PORT='3001'; pnpm.cmd dev
+```
+
+No mezcles: backend en 3000 y proxy en 3001 produce `ECONNREFUSED`; backend en 3001 y `CORS_ORIGIN` en otro puerto produce error de CORS.
 
 ## La interfaz
 
-El panel tiene tres zonas: la **cabecera**, la **vista cenital 3D** y la **barra lateral** con secciones colapsables.
+Esquema general (no es pixel-perfect):
 
-### Cabecera
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│ WAItt control   ● en vivo   media 31.2°  activos 3/3  errores 0     │
+│ [IA off]  objetivo [30.0] fijar  [tema] [pausa] [alertas] [Panel]  │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│                        ESCENA 3D CENITAL                             │
+│                                                                      │
+│          ┌────────┐      ┌────────┐      ┌────────┐                 │
+│          │ node-1 │      │ node-2 │      │ node-3 │                 │
+│          │ 31.2°  │      │ 30.8°  │      │ 29.9°  │                 │
+│          └────────┘      └────────┘      └────────┘                 │
+│                                                                      │
+│   [leyenda]                         [replay ──────●─────]           │
+│                                                                      │
+│   ┌ Nodos ──────────────┐                              [eventos]   │
+│   │ ● node-1  31.2°     │                                           │
+│   │ ● node-2  30.8°     │                                           │
+│   │ ● node-3  29.9°     │                                           │
+│   └─────────────────────┘                                           │
+└──────────────────────────────────────────────────────────────────────┘
+```
 
-- **WAItt · Simulador de temperatura**: título del panel.
-- Etiqueta de **conexión**: verde "conectado" si el frontend habla con el backend, roja "sin conexión" si el WebSocket cayó.
-- Etiqueta de **estado**: "en ejecución" o "pausado".
-- Botones **Pausar/Reanudar** y **Reset**:
-  - **Pausar**: detiene el avance de la simulación (las temperaturas se congelan).
-  - **Reset**: reinicia el sistema a su estado inicial (temperaturas, colas, eventos y contadores de reglas).
+### HUD superior
 
-### Resumen del sistema
+- **WAItt control**: marca.
+- **● en vivo / sin conexión / histórico**: estado de la conexión o del replay.
+- **media**: temperatura media de los workers.
+- **activos**: workers activos sobre el total.
+- **errores**: workers en estado `error`.
+- **IA off / IA auto / IA n/a**: estado del control IA.
+- **objetivo + fijar**: cambia el objetivo global.
+- **tema**: alterna claro/oscuro.
+- **pausa/reanudar**: congela o reanuda el tick.
+- **alertas**: abre la pestaña de alertas.
+- **Panel**: abre el centro de control.
 
-Una fila muestra: número de **nodos** totales, cuántos están **activos**, **inactivos**, **en error**, la **temperatura media**, y una caja "**Objetivo global (°C)**" con su botón **Aplicar**.
+### Escena 3D
 
-### Vista cenital 3D
+Cada nodo es un **rack de servidor**. La altura, el panel frontal, la tira LED y el halo cambian con la temperatura.
 
-Cada nodo (el **Servidor General** y los trabajadores `Servidor 1`, `Servidor 2`, …) es una cabina extruida: su color y altura reflejan la temperatura respecto al objetivo. Un nodo inactivo se ve gris y semitransparente; uno en error, rojo con pulso; si el ventilador está encendido, muestra un disco cian giratorio. Al hacer clic en una cabina se abre su panel de control en la barra lateral.
+| Estado | Aspecto |
+|---|---|
+| Activo | Color térmico normal |
+| Inactivo | Gris y semitransparente |
+| Error | Rojo con pulso |
+| Ventilador encendido | Disco cian giratorio |
+| Seleccionado | Anillo cian y etiqueta visible |
 
-Bajo la escena, los **controles de replay** permiten revisar los últimos 600 estados de la sesión: barrido manual, reproducción automática y vuelta a "en vivo".
+La etiqueta 3D muestra temperatura, ventilador, cola y pila. Haz clic en un rack para abrir su detalle.
 
-### Panel del nodo seleccionado
+### Dock de nodos
 
-Muestra el nombre y estado del nodo, la temperatura actual y su tendencia (sparkline con línea de objetivo y un marcador con la predicción), objetivo/ambiente/carga, cola de tareas, pila LIFO de eventos y las acciones **−5°C** / **+5°C**, **Ventilador on/off** y el formulario **Encolar** (prioridad, demanda y duración) para la cola local.
+Lista lateral con todos los nodos. Se navega con las flechas, `Home` y `End`. Al seleccionar uno se abre el drawer.
 
-### Modelo IA
+### Drawer del nodo
 
-La sección **Modelo IA** muestra la versión del modelo (`sha256:…`), su horizonte de predicción, cuántas inferencias se han recibido en la sesión y, por nodo, la temperatura prevista, la real, la latencia y una **recomendación**:
+```text
+┌──────────────────────────────────────────────┐
+│ NODE-1 · worker                    [activo]  │
+│ 31.20 °C                                     │
+│ objetivo 30.0°C · ambiente 20.0°C            │
+│ [ -5° ] [ +5° ] [ Ventilador on ]            │
+│                                              │
+│ carga 0.30   cola 2/50   pila 5   fallos 0   │
+│                                              │
+│ Modelo IA · +15 s            [estable]       │
+│ 30.80 °C previstos                           │
+│ Δ vs actual -0.40 °C · latencia 8 ms         │
+│                                              │
+│ Cola del nodo                                │
+│  cooldown   p4 · 5s                          │
+│  custom     p2 · 3s                          │
+│                                              │
+│ Pila LIFO (última arriba)                    │
+│  change  Ventilador activado                 │
+│  event   Tarea encolada                      │
+│                                              │
+│ prioridad [3] demanda [2] duración [5]       │
+│ [ Encolar tarea ]                            │
+│                                              │
+│ Tendencia (sesión)  ────────────────         │
+└──────────────────────────────────────────────┘
+```
 
-- **estable**: la predicción se mantiene a ±1 °C del objetivo.
-- **enfriar**: se prevé más de 1 °C por encima; conviene encender el ventilador o reducir carga.
-- **subir carga**: se prevé más de 1 °C por debajo; hay margen para encolar más trabajo.
+En replay, el drawer oculta los botones de edición y el formulario.
 
-Si el backend arranca con `INFERENCE_ENABLED=false` o sin modelo entrenado, la sección lo indica y el resto del panel sigue funcionando.
+### Centro de control
 
-### Control IA
+Es un diálogo con cuatro pestañas:
 
-La sección **Control IA** cierra el lazo entre las predicciones y el simulador. Empieza **desactivada**: el botón **Activar IA** permite que la política actúe sobre los workers.
+| Pestaña | Contenido |
+|---|---|
+| **IA** | Modelo, versión, horizonte, predicción por nodo, recomendación y control IA |
+| **Automatización** | Reglas reactivas, últimos disparos y cola global |
+| **Sistema** | Eficiencia, sparklines y reinicio de la simulación |
+| **Alertas** | Últimas alertas de la sesión |
 
-- **Caliente** (predicción por encima del objetivo): enciende el ventilador, baja la carga, encola una tarea `cooldown` y reduce temporalmente el objetivo efectivo (máx. ±1.5 °C).
-- **Frío** (predicción por debajo del objetivo): apaga el ventilador si lo encendió la IA, sube carga, encola una tarea de mantenimiento y sube el objetivo efectivo.
-- **En banda**: restaura el objetivo efectivo y apaga el ventilador de la IA. El objetivo del usuario (`targetTemp`) no se modifica; el ajuste se ve como `aiTargetOffset` en el panel del nodo.
-- **Apagado de emergencia**: desactivado por defecto. Si se marca la casilla **Apagado**, la IA puede apagar un worker con una desviación extrema; el nodo se enfría hacia el ambiente y la IA puede reactivarlo cuando esté frío.
+En replay, todo el centro de control queda en solo lectura.
 
-La lista de **Últimas acciones** muestra el nodo, la acción, la predicción, el objetivo base y el efectivo. La política exige confirmaciones, respeta un cooldown y un máximo de acciones por minuto; si cambias manualmente el objetivo, el ventilador o la carga de un nodo, la IA se pausa unos segundos en ese nodo. Al **Detener IA**, se libera el offset, se apaga el ventilador que encendió la IA y se reactivan los nodos que había apagado. El **Servidor General** no se controla porque es un agregado.
+### Panel de eventos
 
-### Eficiencia
+El botón flotante con la sonrisa de un bufón abre el panel:
 
-Indicadores de la sesión calculados en el navegador: nodos **en banda** (a ±2 °C del objetivo), **desvío medio**, **% de la sesión en banda**, ventiladores encendidos, **carga media**, tareas en el pool y dos sparklines (temperatura media y tareas pendientes en el pool).
+```text
+┌──────────────────────────────────────────────┐
+│ Eventos                              [cerrar]│
+│ [auto/off] Generador activo cada 5 s         │
+│ [ Detener ]  Intervalo (s) [5]               │
+│                                              │
+│ Catálogo                                     │
+│  [x] Llegada de tareas       [tráfico]       │
+│      Prob. % [8]  Cooldown (s) [3] [Disparar]│
+│  [x] Pico térmico        [perturbación]      │
+│      Prob. % [2]  Cooldown (s) [15] [Disparar]│
+│  ...                                         │
+│                                              │
+│ Últimos eventos                              │
+│  11:42:03  auto  Pico térmico  node-1        │
+│  temperatura de node-1 ajustada a 35C        │
+└──────────────────────────────────────────────┘
+```
 
-### Cola de prioridad global
+### Replay
 
-La sección **Cola de prioridad global** muestra el pool central de tareas pendientes (`X/Y`, con `Y = PENDING_POOL_CAPACITY`). Elige **prioridad** (1–5, 5 = la más urgente), **demanda de cómputo** (1–5) y **duración** (1–10 s) y pulsa **Encolar al pool**. Cada tick, el dispatcher asigna la tarea de mayor prioridad al **nodo activo libre más frío**; si no hay ningún nodo elegible, la tarea espera en el pool. **Vaciar pool** elimina las pendientes.
+La barra inferior guarda los últimos **600 estados** de la sesión:
 
-### Reglas reactivas
+- **Línea de tiempo**: arrastra para revisar un instante.
+- **Play**: reproduce automáticamente cada 600 ms.
+- **Paso**: avanza o retrocede un estado.
+- **Vivo**: vuelve a la simulación en tiempo real.
 
-La sección **Reglas reactivas** lista las reglas automáticas cargadas. Cada regla indica: nombre, a qué nodos afecta (`any`, `all`, `system`, `node`), la condición (`metric op value`, por ejemplo `temperature > 55` o `predictedDelta > 1.5`) y la acción que ejecuta. También muestra cuántas veces se ha disparado y si está **activa** o **desactivada**.
+Durante el replay, el HUD muestra **histórico**, la escena y el drawer son de solo lectura y la configuración está deshabilitada.
 
-Las métricas `predictedTemperature` y `predictedDelta` usan la última predicción del modelo IA de cada nodo (válida durante 60 s). Permiten reaccionar **antes** de que la temperatura suba: la regla por defecto «Ventilador por predicción alta» enciende el ventilador cuando la temperatura prevista supera el objetivo en más de 1.5 °C.
+### Tema
 
-Desde la interfaz puedes:
-- **Activar/Desactivar** una regla (se aplica en vivo, sin reiniciar).
-- **Eliminar** una regla con el botón **✕**.
+El botón sol/luna cambia entre modo claro y oscuro. La preferencia se guarda en `localStorage` (`waitt-theme`) y se aplica antes del primer pintado.
 
-La lista de **Últimos disparos** muestra las últimas reglas que se activaron, sobre qué nodos, qué acción ejecutaron y si se aplicó. Si una acción no tuvo efecto (por ejemplo, cola llena), el disparo aparece como **no aplicada** con el motivo.
+## Primeros pasos
 
-### Alertas
+1. Arranca backend y frontend.
+2. Abre `http://localhost:5173`.
+3. Espera a que la escena muestre los nodos.
+4. Selecciona `node-1` en el dock o en la escena.
+5. Pulsa **+5°** y observa cómo la temperatura sube gradualmente.
+6. Encola una tarea en la cola local.
+7. Abre **Panel → Automatización** y revisa las reglas.
+8. Activa el generador de eventos y dispara un **Pico térmico**.
+9. Abre **Panel → IA** y activa el control IA.
+10. Usa el replay para revisar lo ocurrido.
 
-La sección **Alertas** muestra los últimos avisos importantes (hasta 20). Cada alerta indica la hora, el nodo afectado y el mensaje (por ejemplo, una temperatura crítica).
+## Nodos y estados
+
+| Estado | Significado |
+|---|---|
+| `active` | El nodo procesa tareas y converge a su objetivo |
+| `inactive` | Está apagado; disipa hacia el ambiente |
+| `error` | Superó `MAX_CONSECUTIVE_FAILURES` fallos simulados |
+
+El **Servidor General** es un agregado: no se controla con IA ni admite perturbaciones, pero puede procesar tareas encoladas por API o por reglas `system`.
 
 ## Cómo modificar la temperatura
 
-- **De un nodo en concreto**: selecciónalo en la vista 3D y usa los botones **−5°C** / **+5°C** de su panel. El nodo se acercará gradualmente al nuevo objetivo (no salta al instante).
-- **De todo el sistema**: escribe un valor en "Objetivo global (°C)" y pulsa **Aplicar**. Esto actualiza el objetivo de todos los nodos a la vez.
-- La **temperatura ambiente** no se modifica desde la interfaz; se configura en el backend (ver `AMBIENT_TEMP` en la guía técnica).
+- **Nodo concreto**: selecciónalo y usa **−5°** / **+5°** en el drawer.
+- **Todo el sistema**: escribe el objetivo en el HUD y pulsa **fijar**.
+- **Temperatura ambiente**: no se edita desde la UI; se configura con `AMBIENT_TEMP` o `PATCH /api/system`.
 
-## Cómo encolar tareas y leer su progreso
+El cambio no es instantáneo. El modelo térmico tiene inercia: el nodo tarda unos segundos en acercarse al nuevo objetivo.
 
-Hay dos vías para encolar tareas:
+## Tareas
 
-1. **Cola local del nodo** (botón **Encolar** de su panel): la tarea espera turno en la
-   cola de prioridad de ese nodo concreto.
-2. **Cola de prioridad global** (sección dedicada, o la API `POST /api/tasks`): la tarea
-   entra al pool central y el **dispatcher** la asigna en cada tick al nodo activo libre más
-   frío. Así, si un trabajador está muy caliente, la tarea recae sobre uno más frío
-   (estrangulamiento térmico).
+Hay dos formas de encolar:
 
-Ambas vías usan los mismos parámetros:
+1. **Cola local del nodo**: formulario **Encolar tarea** del drawer. Crea tareas `cooldown`.
+2. **Pool global**: **Panel → Automatización → Cola global**. Crea tareas `custom`.
+
+Para `maintenance`, `reboot`, `calibration` u otros tipos, usa la API (`POST /api/nodes/:id/queue` o `POST /api/tasks`).
+
+Parámetros:
 
 | Parámetro | Rango | Significado |
 |---|---|---|
 | `priority` | 1–5 | Urgencia; 5 se procesa antes |
-| `computeDemand` | 1–5 | Carga de cómputo: eleva la temperatura del nodo mientras se ejecuta (`demanda × 0.07`) |
-| `durationSecs` | 1–10 | Duración de la tarea en segundos |
+| `computeDemand` | 1–5 | Calor extra mientras se ejecuta (`demanda × 0.07`) |
+| `durationSecs` | 1–10 | Duración en segundos |
 
-La cola tiene tres estados de tarea:
+Cada nodo procesa **una tarea a la vez**. Las tareas del pool se asignan al **worker activo libre más frío**; si no hay ninguno, esperan. Las tareas `cooldown` **restan calor** en lugar de sumarlo.
+
+Estados de una tarea:
 
 | Estado | Significado |
 |---|---|
-| `pending` | En la cola, esperando turno |
-| `processing` | En curso: se muestra como "procesando: cooldown (p4 · 8s)" en el panel del nodo |
-| `completed` | Terminada; sale de la cola y queda reflejada en el log de eventos |
+| `pending` | En cola o en el pool |
+| `processing` | En ejecución |
+| `completed` | Terminada |
 
-Cada nodo solo procesa **una tarea a la vez**; el resto espera en la cola. Si la cola (o el pool global) está llena, la asignación se rechaza.
+Si la cola local o el pool están llenos, la tarea se rechaza con `409`.
 
-## Cómo crear y editar reglas reactivas
+## Reglas reactivas
 
-Las reglas se cargan al arrancar desde `backend/data/default-rules.json`. La interfaz permite **activar, desactivar o eliminar** reglas; **crear o editar** reglas se hace por API (más detalles y ejemplos en la [guía técnica](guia-tecnica.md)):
+Las reglas se cargan al arrancar desde `backend/data/default-rules.json`. La UI permite **activar, desactivar y eliminar**; crear o editar se hace por API.
+
+Cada regla tiene:
+
+- **Sujeto**: `any` (algún worker), `all` (todos), `system` (general) o `node` (un nodo).
+- **Condición**: `metric op value`, por ejemplo `temperature > 55` o `predictedDelta > 1.5`.
+- **Acción**: ventilador, apagado, encendido, tarea, alerta, carga u objetivo.
+- **Cooldown**: tiempo mínimo entre disparos.
+
+Métricas disponibles: `temperature`, `temperatureDelta`, `predictedTemperature`, `predictedDelta`, `workload`, `status`, `queueLength`, `stackLength`.
+
+Las métricas predictivas usan la última inferencia del nodo (válida 60 s). Permiten actuar **antes** de que la temperatura suba. La regla semilla «Ventilador por predicción alta» enciende el ventilador cuando `predictedDelta > 1.5`.
+
+Ejemplo por API:
 
 ```bash
 curl -X POST http://localhost:3000/api/rules \
@@ -175,78 +334,178 @@ curl -X POST http://localhost:3000/api/rules \
   -d '{"name":"Ventilador a 50°C","metric":"temperature","op":">","value":50,"action":"fan_on","actionParams":{"minutes":1}}'
 ```
 
-Los cambios se aplican en vivo, sin reiniciar nada. Para que sean permanentes, añade la regla también a `backend/data/default-rules.json` (y reinicia el backend).
+Los cambios se aplican en vivo. Para que sobrevivan a un reinicio, añade la regla a `backend/data/default-rules.json`.
 
-> **Nota**: una regla tiene un "enfriamiento" (`cooldownMs`) para no dispararse repetidamente; si la condición sigue cumpliéndose, esperará ese intervalo antes de volver a actuar.
+## Control IA
 
-Para actuar sobre la predicción, usa `predictedTemperature` o `predictedDelta` como `metric`. Ejemplo: encender el ventilador si la temperatura prevista supera el objetivo en 1.5 °C.
+El control IA está **desactivado por defecto**. Se activa en **Panel → IA → Activar IA**; el botón IA del HUD abre esa pestaña.
 
-## Cómo interpretar el log de eventos
+La política consume las predicciones y actúa sobre los workers:
 
-Cada acción relevante queda registrada en el buffer de logs del backend (se consulta con `GET /api/logs`). Ejemplos de entradas que verás:
+- **Caliente** (predicción por encima del objetivo): enciende el ventilador, reduce carga, encola una tarea `cooldown` y baja temporalmente el objetivo efectivo (máx. ±1.5 °C).
+- **Frío** (predicción por debajo): apaga el ventilador si lo encendió la IA, sube carga, encola una tarea de mantenimiento y sube el objetivo efectivo.
+- **En banda**: restaura el objetivo efectivo y apaga el ventilador de la IA.
 
-- `Simulación iniciada (tick cada 1000 ms)` — arranque del motor.
-- `Simulación en pausa` / `Simulación reanudada` — cambios de estado.
-- `Tarea encolada (cooldown) en node-1` / `Tarea completada: ... en node-1` — vida de las tareas.
-- `Regla "Ventilador por temperatura alta" disparada en node-1 → acción fan_on` — reglas ejecutadas. Si la acción no se aplica, el mensaje añade `(no aplicada: <motivo>)`.
-- `Pool → tarea p5 (Enfriamiento programado por regla) asignada a node-2` — reparto de tareas del pool global.
-- `Ventilador activado en node-1` / `Nodo node-1 apagado` — efectos de las acciones.
+Guardarraíles:
 
-Los niveles son `info` (informativo), `warning` (aviso) y `critical` (crítico; las alertas por `send_alert` se registran como `critical`). También hay mensajes en el panel **Alertas** del frontend cuando una regla de alerta se dispara.
+- Solo workers; el general no se controla.
+- 2 predicciones consecutivas para confirmar.
+- Cooldown de 5 s por nodo.
+- Máximo 20 acciones por minuto.
+- Pausa de 30 s si detecta un cambio manual.
+- Apagado de emergencia desactivado por defecto.
 
-## Preguntas frecuentes (FAQ)
+El objetivo del usuario (`targetTemp`) no se modifica. El ajuste de la IA se ve como `aiTargetOffset` en el drawer. Al **Detener IA**, se liberan offset, ventilador y apagados aplicados por la IA.
 
-1. **¿La temperatura cambia de golpe al pulsar +5°C?** No. El modelo térmico hace que el nodo se acerque gradualmente al objetivo; tarda unos segundos en estabilizarse (cada tick, ~1 segundo, recalcula la temperatura).
+## Eventos de simulación
 
-2. **¿Qué significa que un nodo esté "en error"?** Es un estado simulado: un contador de fallos consecutivos supera un umbral (`MAX_CONSECUTIVE_FAILURES`, por defecto 5). No corresponde a hardware real.
+El panel de eventos permite:
 
-3. **¿Por qué veo poco movimiento en la temperatura media?** Debajo de la media cada nodo oscila alrededor de su objetivo según su carga de trabajo; la media sobre todos los nodos varía lentamente a propósito.
+- **Activar/Detener** el generador automático.
+- Ajustar el **intervalo** de evaluación.
+- Activar o desactivar cada evento.
+- Ajustar **probabilidad** y **cooldown**.
+- **Disparar** un evento a mano.
 
-4. **¿El ventilador consume algo?** El ventilador acelera la disipación del calor (el modelo enfría más rápido). Se puede activar manualmente y, según la regla configurada, también automáticamente; se apaga solo tras el tiempo indicado.
+El generador arranca **apagado** (`EVENTS_ENABLED=false`). El catálogo vive en memoria: reiniciar restablece los valores.
 
-5. **¿Puedo encolar más de una tarea a la vez?** Sí, todas menos una esperan en la cola de prioridad (por nodo) o en el pool global. Si saturas la cola o el pool, las siguientes asignaciones se rechazan.
+| Evento | Efecto |
+|---|---|
+| Llegada de tareas | Encola 1–3 tareas en el pool o en un nodo |
+| Pico térmico | Suma temperatura a un worker |
+| Fallo de nodo | Fuerza estado `error` |
+| Recuperación de nodo | Devuelve a `active` |
+| Fallo de ventilador | Apaga el ventilador |
+| Pico de carga | Sube la carga |
+| Alerta sintética | Emite una alerta |
 
-6. **¿Cómo decide el simulador qué tarea procesa un nodo libre?** La de mayor prioridad (1–5; a igualdad, la encolada antes). Las tareas del pool global se asignan al nodo activo libre más frío, y cada nodo procesa antes su propia cola local.
+El disparo manual salta probabilidad y cooldown. El automático solo elige workers elegibles. Las perturbaciones no se aplican al Servidor General.
 
-7. **¿Reiniciar borra las reglas que creé por API?** No. Reset restaura nodos, tareas y contadores; las reglas añadidas por API siguen existiendo hasta que se eliminen o reinicie el backend.
+## Alertas y toasts
+
+Las alertas aparecen en **Panel → Alertas** y como **toasts** en la esquina. Se generan por la acción `send_alert`, por una alerta sintética o por una regla. Se conservan las últimas 20 en el cliente.
+
+## Logs y base de datos
+
+El backend guarda un log acotado en `backend/data/logs.jsonl`. Se consulta con `GET /api/logs` y se vacía con `DELETE /api/logs`.
+
+Con `DB_ENABLED=true`, la telemetría, los eventos, las reglas, las acciones de IA y las inferencias se guardan en MariaDB. Tablas principales:
+
+- `telemetry`: temperatura y estado por nodo y tick.
+- `events`: reglas, tareas, alertas, eventos, IA e inferencias.
+- `inferences`: predicción, valor real, latencia y versión del modelo.
+
+## Preguntas frecuentes
+
+**¿La temperatura cambia de golpe al pulsar +5°?** No. El modelo térmico tiene inercia; tarda unos segundos.
+
+**¿Qué significa que un nodo esté en error?** Es un estado simulado por fallos consecutivos. No hay hardware real.
+
+**¿Por qué la temperatura media se mueve poco?** Cada nodo oscila alrededor de su objetivo; la media de todos cambia lentamente a propósito.
+
+**¿El ventilador consume algo?** Acelera la disipación (multiplica por 3). Se apaga solo si tiene `fanUntilMs`.
+
+**¿Puedo encolar varias tareas?** Sí. Una se procesa y el resto espera en la cola local o en el pool.
+
+**¿Cómo se elige la tarea del pool?** La de mayor prioridad; a igualdad, la más antigua. Se asigna al worker activo libre más frío.
+
+**¿Reiniciar borra las reglas creadas por API?** Reset no las borra; reiniciar el backend sí, porque la semilla es de solo lectura.
+
+**¿Por qué la IA no actúa?** Revisa que esté activada, que haya predicciones frescas, que el nodo no esté en error y que no haya una pausa manual o cooldown.
+
+**¿Por qué no veo el modelo IA?** Falta `ml/out/model.joblib` o `INFERENCE_ENABLED=false`.
 
 ## Solución de problemas
 
+### `ECONNREFUSED` en la terminal de Vite
+
+**Síntoma**: Vite llena la terminal con `http proxy error` y `AggregateError [ECONNREFUSED]`.
+
+**Causa**: el proxy apunta a un puerto sin backend.
+
+**Solución**: iguala `PORT`, el target de `vite.config.js` y `CORS_ORIGIN`. Ejemplo con 3001:
+
+```powershell
+cd backend
+$env:PORT='3001'; pnpm.cmd dev
+```
+
+```js
+// frontend/vite.config.js
+'/api': 'http://localhost:3001',
+'/socket.io': { target: 'http://localhost:3001', ws: true },
+```
+
 ### Error de CORS
 
-**Síntoma**: la interfaz carga pero las consultas al backend fallan con errores de CORS en la consola del navegador.
+**Síntoma**: la interfaz carga pero las peticiones fallan con CORS.
 
-**Causa**: el backend solo acepta orígenes autorizados. El valor por defecto es `http://localhost:5173`.
+**Causa**: `CORS_ORIGIN` no coincide con el origen del frontend.
 
-**Solución**: en `backend/.env` asegúrate de que `CORS_ORIGIN` coincide con la URL exacta del frontend (incluido el puerto). Luego reinicia el backend.
+**Solución**: pon `CORS_ORIGIN=http://localhost:5173` y reinicia el backend.
 
 ### Puerto ocupado
 
-**Síntoma**: al lanzar el backend, aparece un error `EADDRINUSE` o el mensaje de "puerto en uso".
-
-**Causa**: otro proceso (u otra instancia) ocupa el puerto `3000` (o el `5173` del frontend).
-
-**Solución**: cambia el puerto en `backend/.env` (`PORT=3001`) o cierra el proceso anterior. Verifica con:
-
-```powershell
-netstat -ano | findstr :3000
-```
-
-### WebSocket caído (sin conexión)
-
-**Síntoma**: el panel muestra "sin conexión" en rojo y los datos no se actualizan en vivo.
-
-**Causa**: la conexión WebSocket entre el frontend y el backend no pudo establecerse (backend apagado, proxy roto o cambio de puerto).
+**Síntoma**: `EADDRINUSE`.
 
 **Solución**:
-1. Confirma que el backend sigue corriendo (`http://localhost:3000/health`).
-2. Si cambiaste el puerto del backend, actualiza también el proxy en `frontend/vite.config.js`.
-3. Cuando el backend vuelva, el frontend se reconecta automáticamente.
 
-### El panel está vacío o "sin reglas"
+```powershell
+Get-NetTCPConnection -LocalPort 3000 -State Listen
+```
 
-**Síntoma**: no aparecen nodos ni reglas.
+Cierra el proceso o cambia `PORT` y el proxy.
 
-**Causa**: normalmente el backend no arrancó o `data/default-rules.json` no existe/está vacío.
+### Panel sin conexión
 
-**Solución**: revisa la terminal del backend; confirma que el archivo de reglas está en `backend/data/` y reinicia. El estado inicial crea `INITIAL_NODES` trabajadores + 1 nodo general.
+**Síntoma**: el HUD muestra **sin conexión** y los datos no se actualizan.
+
+**Causa**: backend apagado, proxy roto o puerto cambiado.
+
+**Solución**:
+
+1. Comprueba `http://localhost:3000/health`.
+2. Revisa el target del proxy.
+3. Espera la reconexión automática de Socket.IO.
+
+### La BD no guarda nada
+
+**Síntoma**: las tablas están vacías.
+
+**Causa**: MariaDB no está levantada o `DB_ENABLED=false`.
+
+**Solución**:
+
+```powershell
+docker compose up -d
+```
+
+Revisa el log del backend. Si la BD falla, la simulación sigue.
+
+### No hay predicciones
+
+**Síntoma**: `IA n/a` o `503` en `/api/inference/version`.
+
+**Causa**: falta el modelo, el worker Python no arranca o `INFERENCE_ENABLED=false`.
+
+**Solución**:
+
+```powershell
+ml\.venv\Scripts\python -m ml.train
+```
+
+Comprueba que exista `ml/out/model.joblib` y que `INFERENCE_PYTHON` apunte al intérprete correcto.
+
+### El replay no me deja editar
+
+Es intencional. Vuelve a **Vivo** para editar.
+
+### El generador de eventos no hace nada
+
+Está apagado por defecto. Actívalo en el panel. Revisa también la probabilidad y el cooldown de cada evento.
+
+## Para profundizar
+
+- [Guía Técnica](guia-tecnica.md): arquitectura, API, BD, IA y ML.
+- [Guía Junior](guia-junior.md): recorrido guiado, diagramas y ejercicios.
+- [Pruebas y calibración](pruebas-calibracion.md): resultados y límites.
