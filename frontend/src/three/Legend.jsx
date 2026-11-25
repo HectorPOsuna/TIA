@@ -1,6 +1,6 @@
 export function Legend({ lo, hi }) {
   return (
-    <div className="legend">
+    <div className="legend" data-tutorial-id="legend">
       <span className="legend__label">Temp mapa</span>
       <div className="legend__bar" />
       <div className="legend__ticks">

@@ -29,7 +29,7 @@ export function NodeDetailPanel({ node, series, api, inference, aiNode, readOnly
 
   return (
     <div>
-      <div className="detail__head">
+      <div className="detail__head" data-tutorial-id="detail-head">
         <div>
           <strong
             id="node-drawer-title"
@@ -66,7 +66,7 @@ export function NodeDetailPanel({ node, series, api, inference, aiNode, readOnly
       )}
 
       {!readOnly && (
-        <div className="detail__actions">
+        <div className="detail__actions" data-tutorial-id="detail-actions">
           <button
             type="button"
             className="btn btn--sm"
@@ -91,7 +91,7 @@ export function NodeDetailPanel({ node, series, api, inference, aiNode, readOnly
         </div>
       )}
 
-      <div className="detail__grid">
+      <div className="detail__grid" data-tutorial-id="detail-metrics">
         <div className="detail__metric">
           <div>carga</div>
           <div>{node.workload.toFixed(2)}</div>
@@ -116,29 +116,35 @@ export function NodeDetailPanel({ node, series, api, inference, aiNode, readOnly
         </div>
       </div>
 
-      {rec && (
-        <div className="detail__model">
-          <div className="row">
-            <span className="hint">Modelo IA · +{(inference.horizonMs / 1000).toFixed(0)} s</span>
-            <span className={`badge ${rec.tone}`}>{rec.label}</span>
-          </div>
-          <div className="detail__model-temp">
-            {inference.predictedTemp.toFixed(2)}
-            <small> °C previstos</small>
-          </div>
-          <div className="hint">{rec.detail}</div>
-          <div className="hint mono">
-            Δ vs actual {delta >= 0 ? '+' : ''}
-            {delta.toFixed(2)} °C · latencia {inference.latencyMs} ms
-          </div>
-        </div>
-      )}
+      <div className="detail__model" data-tutorial-id="detail-model">
+        {rec ? (
+          <>
+            <div className="row">
+              <span className="hint">
+                Modelo IA · +{(inference.horizonMs / 1000).toFixed(0)} s
+              </span>
+              <span className={`badge ${rec.tone}`}>{rec.label}</span>
+            </div>
+            <div className="detail__model-temp">
+              {inference.predictedTemp.toFixed(2)}
+              <small> °C previstos</small>
+            </div>
+            <div className="hint">{rec.detail}</div>
+            <div className="hint mono">
+              Δ vs actual {delta >= 0 ? '+' : ''}
+              {delta.toFixed(2)} °C · latencia {inference.latencyMs} ms
+            </div>
+          </>
+        ) : (
+          <div className="hint">Sin predicción disponible para este nodo</div>
+        )}
+      </div>
 
-      {node.queue.list.length > 0 && (
-        <div className="detail__queue">
-          <div className="hint" style={{ marginBottom: 4 }}>
-            Cola del nodo
-          </div>
+      <div className="detail__queue" data-tutorial-id="detail-queue">
+        <div className="hint" style={{ marginBottom: 4 }}>
+          Cola del nodo
+        </div>
+        {node.queue.list.length > 0 ? (
           <ul className="list">
             {node.queue.list.slice(0, 6).map((t) => (
               <li key={t.id} className="list__item mono" style={{ fontSize: 12 }}>
@@ -154,8 +160,10 @@ export function NodeDetailPanel({ node, series, api, inference, aiNode, readOnly
               </li>
             )}
           </ul>
-        </div>
-      )}
+        ) : (
+          <div className="detail__none">Sin tareas en cola</div>
+        )}
+      </div>
 
       {node.stack.list.length > 0 && (
         <div className="detail__queue">

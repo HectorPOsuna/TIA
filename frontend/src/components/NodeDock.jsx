@@ -32,7 +32,7 @@ export function NodeDock({ nodes, selectedId, onSelect }) {
   }
 
   return (
-    <nav className="dock" aria-label="Nodos del simulador">
+    <nav className="dock" aria-label="Nodos del simulador" data-tutorial-id="dock">
       <div className="dock__head">
         <span>Nodos</span>
         <span className="dock__count">{nodes.length}</span>

@@ -58,7 +58,7 @@ export function ReplayBar({ samples, replayIndex, isReplay, onGo, onLive, onStep
   }
 
   return (
-    <div className={`replay ${isReplay ? 'replay--back' : ''}`}>
+    <div className={`replay ${isReplay ? 'replay--back' : ''}`} data-tutorial-id="replay">
       <span className="replay__state">
         <span className={`hud__dot ${isReplay ? 'is-warn' : 'is-on'}`} aria-hidden="true" />
         {isReplay ? 'replay' : 'vivo'}

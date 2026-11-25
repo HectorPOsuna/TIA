@@ -23,9 +23,11 @@ export function NodeLabel({ name, temp, fan, queue, stack, height, lift = 0.5, s
       className="node-label"
       style={{ opacity: selected ? 1 : 0.85 }}
     >
-      <div className="node-label__name">{name}</div>
-      <div className="node-label__temp">{temp.toFixed(1)}°</div>
-      <div className="node-label__chips">{chips}</div>
+      <div data-tutorial-id="node-label">
+        <div className="node-label__name">{name}</div>
+        <div className="node-label__temp">{temp.toFixed(1)}°</div>
+        <div className="node-label__chips">{chips}</div>
+      </div>
     </Html>
   )
 }

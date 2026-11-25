@@ -27,7 +27,7 @@ export function NodeDrawer({ node, series, api, inference, aiNode, readOnly, onC
   }, [onClose])
 
   return (
-    <aside className="node-drawer" aria-labelledby="node-drawer-title">
+    <aside className="node-drawer" aria-labelledby="node-drawer-title" data-tutorial-id="node-drawer">
       <button
         ref={closeRef}
         type="button"

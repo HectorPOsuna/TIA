@@ -43,6 +43,11 @@
   --label-glow: rgba(56, 189, 248, 0.35);
   --spark-guide: rgba(120, 160, 235, 0.18);
   --inactive-dot: #4b5b78;
+  --tutorial-dim: rgba(4, 7, 12, 0.74);
+  --tutorial-ring: var(--accent);
+  --tutorial-glow: rgba(56, 189, 248, 0.5);
+  --tutorial-card-from: rgba(14, 19, 32, 0.97);
+  --tutorial-card-to: rgba(10, 13, 20, 0.98);
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, 'Cascadia Code', Consolas, 'Courier New', monospace;
 }
@@ -89,6 +94,11 @@
   --label-glow: rgba(3, 105, 161, 0.25);
   --spark-guide: rgba(30, 64, 120, 0.25);
   --inactive-dot: #94a3b8;
+  --tutorial-dim: rgba(15, 23, 42, 0.44);
+  --tutorial-ring: var(--accent);
+  --tutorial-glow: rgba(3, 105, 161, 0.4);
+  --tutorial-card-from: rgba(255, 255, 255, 0.97);
+  --tutorial-card-to: rgba(247, 250, 255, 0.98);
 }
 
 * {

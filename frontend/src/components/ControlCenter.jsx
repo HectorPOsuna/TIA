@@ -18,6 +18,7 @@ export function ControlCenter({
   tab,
   onTab,
   onClose,
+  children,
   readOnly,
   rules,
   triggered,
@@ -87,7 +88,12 @@ export function ControlCenter({
         </button>
       </header>
 
-      <div className="control-center__tabs" role="tablist" aria-label="Secciones del centro de control">
+      <div
+        className="control-center__tabs"
+        role="tablist"
+        aria-label="Secciones del centro de control"
+        data-tutorial-id="control-tabs"
+      >
         {TABS.map((item, index) => (
           <button
             key={item.id}
@@ -127,6 +133,7 @@ export function ControlCenter({
           <div
             role="tabpanel"
             id="cc-panel-ia"
+            data-tutorial-id="cc-panel-ia"
             aria-labelledby="cc-tab-ia"
             hidden={activeTab !== 'ia'}
             className="cc-grid cc-grid--2"
@@ -159,6 +166,7 @@ export function ControlCenter({
           <div
             role="tabpanel"
             id="cc-panel-automation"
+            data-tutorial-id="cc-panel-automation"
             aria-labelledby="cc-tab-automation"
             hidden={activeTab !== 'automation'}
             className="cc-grid cc-grid--automation"
@@ -176,6 +184,7 @@ export function ControlCenter({
           <div
             role="tabpanel"
             id="cc-panel-system"
+            data-tutorial-id="cc-panel-system"
             aria-labelledby="cc-tab-system"
             hidden={activeTab !== 'system'}
             className="cc-grid cc-grid--2"
@@ -210,6 +219,7 @@ export function ControlCenter({
           <div
             role="tabpanel"
             id="cc-panel-alerts"
+            data-tutorial-id="cc-panel-alerts"
             aria-labelledby="cc-tab-alerts"
             hidden={activeTab !== 'alerts'}
             className="cc-grid"
@@ -221,6 +231,7 @@ export function ControlCenter({
           </div>
         </div>
       </fieldset>
+      {children}
     </dialog>
   )
 }

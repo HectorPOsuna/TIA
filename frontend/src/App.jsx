@@ -7,6 +7,8 @@ import { useAiControl } from './hooks/useAiControl.js'
 import { useEvents } from './hooks/useEvents.js'
 import { useReducedMotion } from './hooks/useReducedMotion.js'
 import { useTheme } from './hooks/useTheme.js'
+import { useTutorial } from './hooks/useTutorial.js'
+import { TUTORIAL_STEPS, TUTORIAL_STEP_IDS } from './tutorial/steps.js'
 import { Hud } from './components/Hud.jsx'
 import { Icon } from './components/Icon.jsx'
 import { NodeDock } from './components/NodeDock.jsx'
@@ -15,6 +17,7 @@ import { ControlCenter } from './components/ControlCenter.jsx'
 import { EventPanel } from './components/EventPanel.jsx'
 import { ReplayBar } from './components/ReplayBar.jsx'
 import { ToastStack } from './components/ToastStack.jsx'
+import { TutorialOverlay } from './components/TutorialOverlay.jsx'
 import { SceneErrorBoundary } from './components/SceneErrorBoundary.jsx'
 import { Legend } from './three/Legend.jsx'
 import './App.css'
@@ -31,6 +34,7 @@ export default function App() {
   const events = useEvents()
   const reducedMotion = useReducedMotion()
   const { theme, toggle: toggleTheme } = useTheme()
+  const tutorial = useTutorial(TUTORIAL_STEPS.length, TUTORIAL_STEP_IDS)
 
   const [selectedId, setSelectedId] = useState(null)
   const [controlTab, setControlTab] = useState(null)
@@ -50,6 +54,9 @@ export default function App() {
   const bandLo = effective ? effective.targetTemp - 8 : null
   const nodes = effective ? [effective.general, ...effective.workers] : []
   const liveNodes = live ? [live.general, ...live.workers] : []
+  const tutorialStep = TUTORIAL_STEPS[tutorial.index]
+  const tutorialView = tutorial.visible ? tutorialStep.view : null
+  const firstNodeId = effective?.workers?.[0]?.id ?? effective?.general?.id
 
   const selectedNode = effective
     ? effective.general.id === selectedId
@@ -126,11 +133,40 @@ export default function App() {
     return () => clearTimeout(id)
   }, [hintVisible, selectedId])
 
+  useEffect(() => {
+    if (!tutorialView) return undefined
+    const frame = requestAnimationFrame(() => {
+      if (tutorialView.drawer && firstNodeId) {
+        setSelectedId((current) => current ?? firstNodeId)
+      }
+      if (tutorialView.drawer || tutorialView.controlTab) setEventsOpen(false)
+      if (tutorialView.controlTab) setControlTab(tutorialView.controlTab)
+      if (tutorialView.events) setEventsOpen(true)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [tutorialView, firstNodeId])
+
   const applyTarget = () => {
     if (target === '') return
     api.patchSystem({ targetTemp: Number(target) })
     setTarget('')
   }
+
+  const tutorialOverlay = tutorial.visible ? (
+    <TutorialOverlay
+      step={tutorialStep}
+      index={tutorial.index}
+      total={TUTORIAL_STEPS.length}
+      steps={TUTORIAL_STEPS}
+      explored={tutorial.explored}
+      onMark={tutorial.markExplored}
+      onJump={tutorial.goTo}
+      onNext={tutorial.next}
+      onPrevious={tutorial.previous}
+      onReset={tutorial.reset}
+      reducedMotion={reducedMotion}
+    />
+  ) : null
 
   return (
     <div className="app">
@@ -146,7 +182,7 @@ export default function App() {
                     </div>
                   }
                 >
-                  <div className="scene-canvas__3d" aria-hidden="true">
+                  <div className="scene-canvas__3d" aria-hidden="true" data-tutorial-id="scene">
                     <Scene
                       snapshot={effective}
                       bandLo={bandLo}
@@ -214,7 +250,7 @@ export default function App() {
             </div>
           )}
 
-          <div className="event-launcher">
+          <div className="event-launcher" data-tutorial-id="events-launcher">
             <button
               type="button"
               className="event-fab"
@@ -239,6 +275,20 @@ export default function App() {
                 onTrigger={events.trigger}
               />
             )}
+          </div>
+
+          <div className="tutorial-launcher">
+            <button
+              type="button"
+              className="tutorial-fab"
+              onClick={tutorial.toggle}
+              aria-label={tutorial.visible ? 'Ocultar tutorial' : 'Mostrar tutorial'}
+              aria-pressed={tutorial.visible}
+              title={tutorial.visible ? 'Ocultar tutorial' : 'Mostrar tutorial'}
+              data-tutorial-ui="toggle"
+            >
+              <Icon name="help" size={22} />
+            </button>
           </div>
 
           {!isReplay && <ToastStack toasts={toasts} onDismiss={dismissToast} />}
@@ -274,8 +324,11 @@ export default function App() {
           alerts={alerts}
           effective={effective}
           samples={history.samples}
-        />
+        >
+          {tutorialOverlay}
+        </ControlCenter>
       )}
+      {!controlTab && tutorialOverlay}
     </div>
   )
 }

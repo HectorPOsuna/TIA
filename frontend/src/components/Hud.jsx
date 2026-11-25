@@ -23,7 +23,7 @@ export function Hud({
 
   return (
     <header className="hud">
-      <div className="hud__brand">
+      <div className="hud__brand" data-tutorial-id="hud-brand">
         <span className="hud__logo">
           WAItt <span>control</span>
         </span>
@@ -41,7 +41,7 @@ export function Hud({
       </div>
 
       {summary && (
-        <dl className="hud__metrics" aria-label="Resumen del sistema">
+        <dl className="hud__metrics" aria-label="Resumen del sistema" data-tutorial-id="hud-metrics">
           <div>
             <dt>media</dt>
             <dd>{summary.averageTemp.toFixed(1)}°</dd>
@@ -64,6 +64,7 @@ export function Hud({
       <div className="hud__actions">
         <button
           type="button"
+          data-tutorial-id="hud-ai"
           className={`hud__ai ${aiEnabled ? 'is-auto' : ''} ${aiAvailable ? '' : 'is-off'}`}
           onClick={() => onOpenControl('ia')}
           title="Abrir control de IA"
@@ -74,6 +75,7 @@ export function Hud({
 
         <form
           className="hud__target"
+          data-tutorial-id="hud-target"
           onSubmit={(event) => {
             event.preventDefault()
             onApplyTarget()
@@ -101,6 +103,7 @@ export function Hud({
         <button
           type="button"
           className="icon-btn"
+          data-tutorial-id="hud-theme"
           onClick={onToggleTheme}
           aria-label={themeLabel}
           aria-pressed={theme === 'light'}
@@ -112,6 +115,7 @@ export function Hud({
         <button
           type="button"
           className="icon-btn"
+          data-tutorial-id="hud-running"
           onClick={onToggleRunning}
           disabled={isReplay || !connected}
           aria-label={running ? 'Pausar simulación' : 'Reanudar simulación'}
@@ -123,6 +127,7 @@ export function Hud({
         <button
           type="button"
           className="icon-btn hud__bell"
+          data-tutorial-id="hud-alerts"
           onClick={() => onOpenControl('alerts')}
           aria-label={`Abrir alertas: ${alertCount}`}
           title="Alertas"
@@ -134,6 +139,7 @@ export function Hud({
         <button
           type="button"
           className="btn btn--sm hud__panel"
+          data-tutorial-id="hud-panel"
           onClick={() => onOpenControl('ia')}
           aria-label="Abrir centro de control"
         >

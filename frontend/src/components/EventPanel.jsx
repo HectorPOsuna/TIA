@@ -83,6 +83,7 @@ export function EventPanel({
     <div
       id={id}
       className="event-panel"
+      data-tutorial-id="event-panel"
       role="dialog"
       aria-modal="false"
       aria-labelledby="event-panel-title"
@@ -200,7 +201,7 @@ export function EventPanel({
         )}
       </fieldset>
 
-      <div className="event-feed">
+      <div className="event-feed" data-tutorial-id="events-feed">
         <h3 className="event-panel__section-title">Últimos eventos</h3>
         {state.recent.length === 0 ? (
           <div className="hint">Sin eventos todavía</div>
