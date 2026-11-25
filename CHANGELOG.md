@@ -3,6 +3,37 @@
 Todas las notas significativas de los cambios de WAItt se documentan en este archivo.
 
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/) y este proyecto se adhiere a [Conventional Commits](https://www.conventionalcommits.org/es/v1.0.0/).
+## [1.9.0](https://github.com/HectorPOsuna/TIA/compare/v1.8.0...v1.9.0) (2026-11-25)
+
+### Añadido
+
+* **frontend:** añadir tutorial interactivo con guía adaptativa ([4088a55](https://github.com/HectorPOsuna/TIA/commit/4088a55e0bf60b149193f5c123cdf9626f43d407))
+
+### Corregido
+
+* **backend:** evita rechazo no controlado al caer el worker de inferencia ([092cc8c](https://github.com/HectorPOsuna/TIA/commit/092cc8ca8ed1728a223402cfadea916f697155ad))
+
+### Mantenimiento
+
+* añadir configuración y registros de OpenSpec ([5a0002e](https://github.com/HectorPOsuna/TIA/commit/5a0002e1dd9562f55fca481a29115a2c72e6faea))
+
+### Documentación
+
+* actualizar guía técnica ([e6faf82](https://github.com/HectorPOsuna/TIA/commit/e6faf829f4a2c3fbf45bc3b528eae2e36add884b))
+* alinear guías de puertos con 3000 ([b5b08df](https://github.com/HectorPOsuna/TIA/commit/b5b08dfb63d52ea01a0bb4901c0abce7a8b6d322))
+* añadir guía junior de onboarding ([a9f2f85](https://github.com/HectorPOsuna/TIA/commit/a9f2f850402ba5ffb7704f74d2f0310ba6e12bc3))
+* documenta pruebas, calibración y tolerancia a fallos ([623637b](https://github.com/HectorPOsuna/TIA/commit/623637bed2eb14ecd6775adc7bc8c5c6139bfd3b))
+* enlazar guías y corregir comandos de ML ([0a25800](https://github.com/HectorPOsuna/TIA/commit/0a25800b8be5d57f688a515e9acd561a6a683efc))
+* reescribir guía de usuario ([fd57002](https://github.com/HectorPOsuna/TIA/commit/fd570023ceacddcf686cc4b6aa8dfeb84d49d114))
+
+### Pruebas
+
+* **backend:** añade pruebas de estrés y reglas en conflicto ([cbe7cf6](https://github.com/HectorPOsuna/TIA/commit/cbe7cf610df955ec5b0fd9e91fec1e72e5bb3350))
+* **backend:** calibra el modelo térmico con cotas medibles ([68f37a0](https://github.com/HectorPOsuna/TIA/commit/68f37a03ecc94b73a7df2cb33ebee1fa2da27ed4))
+* **backend:** cubre caída y reconexión de WebSocket ([78a2df7](https://github.com/HectorPOsuna/TIA/commit/78a2df7633f86246e027eb9a290ffe5e666a7726))
+* **backend:** cubre tolerancia a fallos de nodo ([934cc9d](https://github.com/HectorPOsuna/TIA/commit/934cc9d99f4299f2b7f4b4b33465c05797ed9f99))
+* **frontend:** cubre recomendación y layout con node:test ([76a479b](https://github.com/HectorPOsuna/TIA/commit/76a479be35ebe2cbc9da9e03c951af340590f531))
+
 ## [1.8.0](https://github.com/HectorPOsuna/TIA/compare/v1.7.0...v1.8.0) (2026-11-09)
 
 ### Añadido
