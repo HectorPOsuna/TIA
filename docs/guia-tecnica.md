@@ -70,16 +70,16 @@ flowchart LR
 
 ### 1.2 Contrato de puertos
 
-El backend escucha en `PORT`. El proxy de Vite y `CORS_ORIGIN` deben coincidir con ese puerto y con el origen del frontend.
+El backend escucha en `PORT`. El proxy de Vite debe apuntar a ese mismo puerto; `CORS_ORIGIN` corresponde al origen del frontend, no al puerto del backend.
 
-| Pieza | Dónde se configura | Default | Ejemplo local con 3001 |
-|---|---|---|---|
-| Backend | `PORT` en `backend/.env` | `3000` | `$env:PORT='3001'; pnpm.cmd dev` |
-| Proxy Vite | `frontend/vite.config.js` | `http://localhost:3000` | `http://localhost:3001` |
-| CORS | `CORS_ORIGIN` en `backend/.env` | `http://localhost:5173` | `http://localhost:5173` |
-| Frontend | Vite | `5173` | `5173` |
+| Pieza | Dónde se configura | Default |
+|---|---|---|
+| Backend | `PORT` en `backend/.env` | `3000` |
+| Proxy Vite | `frontend/vite.config.js` | `http://localhost:3000` |
+| CORS | `CORS_ORIGIN` en `backend/.env` | `http://localhost:5173` |
+| Frontend | Vite | `5173` |
 
-Regla: si cambias `PORT`, cambia también el target de `/api` y `/socket.io` en `vite.config.js`. Si no, Vite devuelve `ECONNREFUSED`. Si cambias el puerto del frontend, actualiza `CORS_ORIGIN`.
+Regla: con los valores por defecto, backend y proxy usan `3000` y el frontend se abre en `5173`. Si cambias `PORT`, cambia también los targets de `/api` y `/socket.io` en `vite.config.js`; si no, Vite devuelve `ECONNREFUSED`. Si cambias el puerto del frontend, actualiza `CORS_ORIGIN`.
 
 ## 2. Estructura del repositorio
 
@@ -960,12 +960,14 @@ El proxy apunta a un puerto donde no hay backend. Compara:
 PORT del backend == target de /api y /socket.io en vite.config.js
 ```
 
-Si el backend está en 3001:
+Con los valores por defecto, el proxy queda así:
 
 ```js
-'/api': 'http://localhost:3001',
-'/socket.io': { target: 'http://localhost:3001', ws: true },
+'/api': 'http://localhost:3000',
+'/socket.io': { target: 'http://localhost:3000', ws: true },
 ```
+
+Si cambias `PORT` a propósito, usa ese mismo valor en ambos targets.
 
 ### CORS
 

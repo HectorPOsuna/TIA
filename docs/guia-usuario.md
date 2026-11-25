@@ -77,14 +77,14 @@ Necesita telemetría en la BD. Deja el backend corriendo unos minutos con `DB_EN
 
 ## Puertos: la regla que evita el error `ECONNREFUSED`
 
-El backend escucha en `PORT`. El proxy de Vite debe apuntar al **mismo puerto**.
+El backend escucha en `PORT`. El proxy de Vite debe apuntar al **mismo puerto**. Con los valores por defecto, ambos usan `3000` y el frontend se abre en `5173`.
 
-| Pieza | Default | Ejemplo con 3001 |
+| Pieza | Dónde se configura | Default |
 |---|---|---|
-| Backend | `3000` | `$env:PORT='3001'; pnpm.cmd dev` |
-| Proxy Vite | `http://localhost:3000` | `http://localhost:3001` |
-| CORS | `http://localhost:5173` | `http://localhost:5173` |
-| Frontend | `5173` | `5173` |
+| Backend | `PORT` en `backend/.env` | `3000` |
+| Proxy Vite | `frontend/vite.config.js` | `http://localhost:3000` |
+| CORS | `CORS_ORIGIN` en `backend/.env` | `http://localhost:5173` |
+| Frontend | Vite | `5173` |
 
 Si ves en la terminal de Vite:
 
@@ -96,18 +96,18 @@ AggregateError [ECONNREFUSED]
 el proxy apunta a un puerto donde no hay backend. Revisa `frontend/vite.config.js`:
 
 ```js
-'/api': 'http://localhost:3001',
-'/socket.io': { target: 'http://localhost:3001', ws: true },
+'/api': 'http://localhost:3000',
+'/socket.io': { target: 'http://localhost:3000', ws: true },
 ```
 
-Y arranca el backend con el mismo puerto:
+y arranca el backend sin cambiar el puerto:
 
 ```powershell
 cd backend
-$env:PORT='3001'; pnpm.cmd dev
+pnpm.cmd dev
 ```
 
-No mezcles: backend en 3000 y proxy en 3001 produce `ECONNREFUSED`; backend en 3001 y `CORS_ORIGIN` en otro puerto produce error de CORS.
+No mezcles backend y proxy en puertos distintos. Si necesitas otro puerto, cambia `PORT` y los dos targets del proxy a la vez. Si cambias el puerto del frontend, actualiza `CORS_ORIGIN`.
 
 ## La interfaz
 
@@ -423,18 +423,20 @@ Con `DB_ENABLED=true`, la telemetría, los eventos, las reglas, las acciones de 
 
 **Causa**: el proxy apunta a un puerto sin backend.
 
-**Solución**: iguala `PORT`, el target de `vite.config.js` y `CORS_ORIGIN`. Ejemplo con 3001:
+**Solución**: arranca el backend con `pnpm.cmd dev` en `backend/` y deja el proxy en `http://localhost:3000`:
 
 ```powershell
 cd backend
-$env:PORT='3001'; pnpm.cmd dev
+pnpm.cmd dev
 ```
 
 ```js
 // frontend/vite.config.js
-'/api': 'http://localhost:3001',
-'/socket.io': { target: 'http://localhost:3001', ws: true },
+'/api': 'http://localhost:3000',
+'/socket.io': { target: 'http://localhost:3000', ws: true },
 ```
+
+Si usas otro puerto a propósito, cambia `PORT` y ambos targets juntos; mantén `CORS_ORIGIN` en el origen del frontend.
 
 ### Error de CORS
 

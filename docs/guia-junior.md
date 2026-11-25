@@ -139,14 +139,14 @@ En Windows, usa siempre `pnpm.cmd` y `npm.cmd`. Los shims de PowerShell pueden e
 
 ### 4.2 La regla de puertos
 
-El backend escucha en `PORT`. El proxy de Vite debe apuntar al mismo puerto.
+El backend escucha en `PORT`. El proxy de Vite debe apuntar al mismo puerto. Con la configuración por defecto, ambos usan `3000`; el frontend sigue en `5173`.
 
-| Pieza | Default real | Ejemplo local con 3001 |
+| Pieza | Dónde se configura | Valor por defecto |
 |---|---|---|
-| Backend | `3000` | `$env:PORT='3001'; pnpm.cmd dev` |
-| Proxy Vite | `http://localhost:3000` | `http://localhost:3001` |
-| CORS | `http://localhost:5173` | `http://localhost:5173` |
-| Frontend | `5173` | `5173` |
+| Backend | `PORT` en `backend/.env` | `3000` |
+| Proxy Vite | `frontend/vite.config.js` | `http://localhost:3000` |
+| CORS | `CORS_ORIGIN` en `backend/.env` | `http://localhost:5173` |
+| Frontend | Vite | `5173` |
 
 Regla mental:
 
@@ -161,7 +161,7 @@ Si no coinciden, Vite muestra:
 AggregateError [ECONNREFUSED]
 ```
 
-No mezcles backend en 3000 con proxy en 3001. Tampoco cambies el puerto del frontend sin actualizar `CORS_ORIGIN`.
+Si necesitas otro puerto, cambia `PORT` y actualiza los dos targets del proxy en el mismo paso. No mezcles backend y proxy en puertos distintos. Tampoco cambies el puerto del frontend sin actualizar `CORS_ORIGIN`.
 
 ### 4.3 Arranque
 
